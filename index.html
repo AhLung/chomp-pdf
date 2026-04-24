@@ -469,11 +469,11 @@
 <body>
 
 <h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.1.0</span></h1>
-<div class="sub">離線壓縮 PDF · 鯊魚跟恐龍幫你搞定 · 100% 本機處理 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
+<div class="sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
 
 <label id="drop" for="file">
-  <div><strong>拖 PDF 進來</strong> 或點這裡選檔</div>
-  <div class="hint">單檔、不上傳任何地方</div>
+  <div><strong>點這裡選 PDF</strong>（或把檔案拖進來）</div>
+  <div class="hint">一次一個檔，檔案不會上傳</div>
 </label>
 <input type="file" id="file" accept="application/pdf">
 <div id="fileInfo"></div>
@@ -482,10 +482,10 @@
 
 <div class="row mode-row">
   <span class="mode-label">目標</span>
-  <label class="radio"><input type="radio" name="tgtType" value="size" checked> 指定檔案大小</label>
-  <label class="radio"><input type="radio" name="tgtType" value="view"> 觀看解析度</label>
+  <label class="radio"><input type="radio" name="tgtType" value="size" checked> 縮到指定大小</label>
+  <label class="radio"><input type="radio" name="tgtType" value="view"> 依裝置挑畫質</label>
 </div>
-<div class="row-hint" id="tgtHint">固定檔案大小上限,畫質自動調到剛好符合</div>
+<div class="row-hint" id="tgtHint">告訴工具你要多小,畫質自動調到剛好符合</div>
 
 <div class="row" id="rowSize">
   <label for="target">上限</label>
@@ -494,13 +494,13 @@
 </div>
 
 <div class="row" id="rowView" style="display:none">
-  <label for="view">在哪看</label>
+  <label for="view">主要在哪看</label>
   <select id="view">
-    <option value="mobile">手機(寬約 1200px)</option>
-    <option value="720p">720p HD 螢幕(1280px)</option>
-    <option value="1080p" selected>1080p 螢幕(1920px)</option>
-    <option value="1440p">1440p / 2K 螢幕(2560px)</option>
-    <option value="4k">4K 螢幕(3840px)</option>
+    <option value="mobile">手機</option>
+    <option value="720p">筆電 / 小螢幕</option>
+    <option value="1080p" selected>一般電腦螢幕</option>
+    <option value="1440p">高解析螢幕</option>
+    <option value="4k">4K 螢幕</option>
   </select>
 </div>
 
@@ -508,13 +508,13 @@
   <span class="mode-label">畫質</span>
   <label class="radio"><input type="radio" name="vq" value="low"> 低(最小檔)</label>
   <label class="radio"><input type="radio" name="vq" value="std" checked> 標準</label>
-  <label class="radio"><input type="radio" name="vq" value="high"> 高(保真)</label>
+  <label class="radio"><input type="radio" name="vq" value="high"> 高(最清晰)</label>
 </div>
 
 <div class="row mode-row">
   <span class="mode-label">壓縮方式</span>
-  <label class="radio"><input type="radio" name="mode" value="preserve" checked> 保留文字層(可選取)</label>
-  <label class="radio"><input type="radio" name="mode" value="raster"> 最大壓縮(整頁變圖,文字變不可選)</label>
+  <label class="radio"><input type="radio" name="mode" value="preserve" checked> 文字仍可複製(推薦)</label>
+  <label class="radio"><input type="radio" name="mode" value="raster"> 整頁轉圖片(檔案最小)</label>
 </div>
 
 <div class="row mode-row" hidden>
@@ -1640,12 +1640,16 @@
         hasJpx = true;
       } catch (_) { hasJpx = false; }
     }
-    const codecs = [];
-    codecs.push(hasMoz ? 'MozJPEG ✓' : 'MozJPEG ✗');
-    codecs.push(hasOxi ? 'OxiPNG ✓' : 'OxiPNG ✗');
-    codecs.push(hasJpx ? 'JPEG 2000 ✓' : 'JPEG 2000 ✗(file:// 限制,改成內嵌或用 http)');
-    $cs.textContent = '🔧 Smart 賽馬編碼器:' + codecs.join(' · ');
-    $cs.style.color = (hasMoz && hasOxi) ? '#0a8f4a' : '#c92a2a';
+    // 只在有問題時才顯示訊息,主引擎都正常就保持安靜
+    if (hasMoz && hasOxi) {
+      $cs.textContent = '';
+    } else {
+      const missing = [];
+      if (!hasMoz) missing.push('JPEG');
+      if (!hasOxi) missing.push('PNG');
+      $cs.textContent = `⚠ ${missing.join(' / ')} 壓縮引擎未載入,結果可能較大`;
+      $cs.style.color = '#c92a2a';
+    }
   })();
 
   let currentFile = null;
@@ -1659,8 +1663,8 @@
   };
 
   const WARN_MSG = {
-    preserve: '壓縮所有影像(JPEG + PNG-like),<strong>文字層、向量圖、書籤完整保留</strong>。先做影像去重 + 清 metadata,再壓圖。文字為主/圖少的 PDF 空間有限。CCITTFax/JBIG2/1-bit 黑白 / Indexed 調色盤圖會跳過不壓。',
-    raster: '把每頁重新光柵化成 JPEG/JPEG 2000。<strong>壓縮後文字無法選取/搜尋</strong>,但檔案大小最可預測。寄信附檔、系統上傳最合適。'
+    preserve: '只壓縮圖片,<strong>文字仍可複製、搜尋,版面完整保留</strong>。適合大部分情況,圖多的 PDF 效果最明顯。',
+    raster: '把每頁整張轉成圖片,<strong>檔案可以壓到最小</strong>,但文字不能再複製或搜尋。寄信附檔、系統上傳最合適。'
   };
   const updateWarn = () => {
     const mode = document.querySelector('input[name=mode]:checked').value;
@@ -1674,8 +1678,8 @@
   const $rowViewQuality = document.getElementById('rowViewQuality');
   const $tgtHint = document.getElementById('tgtHint');
   const TGT_HINT = {
-    size: '固定檔案大小上限,畫質自動調到剛好符合',
-    view: '固定顯示解析度,檔案大小隨內容決定;可另選畫質等級'
+    size: '告訴工具你要多小,畫質自動調到剛好符合',
+    view: '依裝置螢幕挑畫質,檔案大小自動決定'
   };
   // 追蹤用戶是否手動點過壓縮方式 / 改過目標(改過就不被推薦覆蓋)
   window.__userPickedMode = false;
@@ -1942,19 +1946,19 @@
     const recommendedMB = roundToFriendlyMB(estimatedMB * 1.15);
 
     $analysis.innerHTML = `
-      <div><strong>${a.pageCount} 頁 · A ${a.aCount} 張(可壓)+ B ${a.bCount} 張(無損重壓)+ C ${a.cCount} 張(不支援)</strong></div>
+      <div><strong>共 ${a.pageCount} 頁 · ${a.aCount} 張圖可壓縮${a.bCount > 0 ? ` · ${a.bCount} 張遮色片` : ''}${a.cCount > 0 ? ` · ${a.cCount} 張特殊格式` : ''}</strong></div>
       <div class="bar">
-        <div class="jpeg" style="width:${aPct.toFixed(1)}%" title="A 可壓"></div>
-        <div class="other" style="width:${bPct.toFixed(1)}%;background:#fbbf24" title="B 無損重壓"></div>
-        <div class="other" style="width:${cPct.toFixed(1)}%;background:#ef4444" title="C 不支援"></div>
+        <div class="jpeg" style="width:${aPct.toFixed(1)}%" title="可壓縮的圖"></div>
+        <div class="other" style="width:${bPct.toFixed(1)}%;background:#fbbf24" title="遮色片"></div>
+        <div class="other" style="width:${cPct.toFixed(1)}%;background:#ef4444" title="特殊格式"></div>
         <div class="other" style="width:${textPct.toFixed(1)}%" title="文字等"></div>
       </div>
       <div class="breakdown">
-        <div>🖼 <strong>A 可壓影像:${fmtMB(a.aBytes)}</strong>(${aPct.toFixed(0)}%)= JPEG ${fmtMB(a.jpegBytes)} + PNG-like ${fmtMB(a.flateBytes)}</div>
-        <div>🎭 <strong>B 遮罩 Flate(無損重壓):${fmtMB(a.bBytes)}</strong>(${bPct.toFixed(0)}%)— SMask/Mask/1-bit/ImageMask,會用 zlib 9 再壓一次</div>
-        <div>🚫 <strong>C 不支援(保留):${fmtMB(a.cBytes)}</strong>(${cPct.toFixed(0)}%)— CCITTFax/JBIG2/LZW 等,目前只能原樣留著</div>
-        <div>📄 <strong>真文字/字體/向量/其他:${fmtMB(a.textOtherBytes)}</strong>(${textPct.toFixed(0)}%)</div>
-        <div style="color:var(--text-3);margin-top:6px">💡 <strong>建議:保留文字層 + 目標 ${recommendedMB} MB</strong>(估計可達到的最小高品質檔案大小,已自動填入)</div>
+        <div>🖼 <strong>可壓縮的圖片:${fmtMB(a.aBytes)}</strong>(${aPct.toFixed(0)}%)</div>
+        ${a.bBytes > 0 ? `<div>🎭 <strong>遮色片:${fmtMB(a.bBytes)}</strong>(${bPct.toFixed(0)}%)— 會優化,省一點</div>` : ''}
+        ${a.cBytes > 0 ? `<div>🚫 <strong>特殊格式:${fmtMB(a.cBytes)}</strong>(${cPct.toFixed(0)}%)— 原樣保留,不影響閱讀</div>` : ''}
+        <div>📄 <strong>文字、字體、向量圖:${fmtMB(a.textOtherBytes)}</strong>(${textPct.toFixed(0)}%)</div>
+        <div style="color:var(--text-3);margin-top:6px">💡 <strong>建議目標 ${recommendedMB} MB</strong>(已自動填入,按下壓縮即可)</div>
       </div>
     `;
     $analysis.style.display = 'block';
@@ -2057,7 +2061,7 @@
       const codecStats = Array.from(codecWins.entries())
         .sort((a, b) => b[1] - a[1])
         .map(([k, v]) => `${k}(${v})`).join(', ');
-      log(`Codec 賽馬贏家:${codecStats}`);
+      log(`壓縮引擎使用次數:${codecStats}`);
     }
     // save() 是 CPU-bound,用 CSS transition 讓動物在 compositor 繼續爬
     creepToFinish();
@@ -2106,7 +2110,7 @@
   }
 
   async function shrinkRaster(file, targetBytes, codec) {
-    log(`模式:最大壓縮(整頁光柵化) · 編碼:Smart`);
+    log(`模式:整頁轉圖片`);
     log(`讀取 PDF ...`);
     const buf = await file.arrayBuffer();
     const doc = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -2121,11 +2125,11 @@
       pageMaxPt = Math.max(pageMaxPt, vp.width, vp.height);
     }
     const MAX_SCALE = pageMaxPt > 0 ? Math.min(3.5, 1920 / pageMaxPt) : 3.0;
-    log(`\n頁面最長邊 ${Math.round(pageMaxPt)}pt,1080p 基準 MAX scale ≈ ${MAX_SCALE.toFixed(2)}`);
+    log(`\n頁面最長邊 ${Math.round(pageMaxPt)}pt · 最高渲染倍率 ${MAX_SCALE.toFixed(2)}×(1080p 為基準)`);
 
     const ratio = targetBytes / file.size;
     let [scale, quality] = pickStartRaster(ratio, MAX_SCALE);
-    log(`目標比例 ${(ratio * 100).toFixed(1)}%,起點 scale=${scale.toFixed(2)} quality=${quality.toFixed(2)}`);
+    log(`目標比例 ${(ratio * 100).toFixed(1)}% · 起點:縮放 ${Math.round(scale * 100)}% · 畫質 ${Math.round(quality * 100)}%`);
 
     const MAX_TRIES = 5;
     const history = [];
@@ -2138,21 +2142,21 @@
     }, codec);
 
     for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
-      log(`\n[第 ${attempt} 次] scale=${scale.toFixed(2)} quality=${quality.toFixed(2)}`);
+      log(`\n[第 ${attempt} 次](縮放 ${Math.round(scale * 100)}% · 畫質 ${Math.round(quality * 100)}%)`);
       startRace();
       const bytes = await rasterBuildFn(scale, quality);
       log(`  → ${fmtMB(bytes.length)}`);
       if (bytes.length <= targetBytes) {
         let best = { scale, quality, r: compressRatioOf(scale, quality), bytes };
         best = await tryUpQuality(rasterBuildFn, best, targetBytes, history[history.length - 1], MAX_SCALE, 0.95);
-        log(`\n✓ 達標!最終 ${fmtMB(best.bytes.length)} @ scale=${best.scale.toFixed(2)} quality=${best.quality.toFixed(2)}`);
+        log(`\n✓ 達標!最終 ${fmtMB(best.bytes.length)}(縮放 ${Math.round(best.scale * 100)}% · 畫質 ${Math.round(best.quality * 100)}%)`);
         return best.bytes;
       }
       lastBytes = bytes;
       history.push({ scale, quality, r: compressRatioOf(scale, quality), bytes: bytes.length });
       [scale, quality] = refineParams(scale, quality, bytes.length, targetBytes, MAX_SCALE, 0.95);
     }
-    throw new Error(`試 ${MAX_TRIES} 次仍未達標,最後 ${fmtMB(lastBytes.length)}。請提高目標或減頁。`);
+    throw new Error(`試 ${MAX_TRIES} 次壓不到目標,最後 ${fmtMB(lastBytes.length)}。請調大目標,或改「保留文字」模式。`);
   }
 
   const MAX_CANVAS_DIM = 8192; // 保守 cap,避免瀏覽器 OOM
@@ -2399,9 +2403,9 @@
 
     setProgressPhase(8, 4);
     const formDup = await dedupFormXObjects(pdfDoc);
-    if (formDup.count > 0) log2(`  Form 積木去重:${formDup.count} 個,省 ${fmtMB(formDup.saved)}`);
+    if (formDup.count > 0) log2(`  重複元件合併:${formDup.count} 個,省 ${fmtMB(formDup.saved)}`);
     const icc = await dedupICCProfiles(pdfDoc);
-    if (icc.count > 0) log2(`  ICC 色彩描述去重:${icc.count} 個,省 ${fmtMB(icc.saved)}`);
+    if (icc.count > 0) log2(`  重複色彩描述合併:${icc.count} 個,省 ${fmtMB(icc.saved)}`);
 
     setProgressPhase(12, 8);
     log2('  清理未引用物件中...');
@@ -2413,9 +2417,9 @@
     const skipRefs = new Set(items.map(x => refKey(x.ref)));
 
     setProgressPhase(20, 12);
-    log2('  Flate 無損重壓中...');
+    log2('  無損再壓縮中...');
     const flateRe = await recompressFlateLossless(pdfDoc, skipRefs, (i, t) => setProgress((i / t) * 100));
-    log2(`  Flate 無損重壓:${flateRe.count} 個,省 ${fmtMB(flateRe.saved)}`);
+    log2(`  無損再壓縮:${flateRe.count} 個,省 ${fmtMB(flateRe.saved)}`);
 
     setProgressPhase(32, 5);
     log2('  保存預處理結果...');
@@ -2442,12 +2446,12 @@
     // Phase 0-12%: SMask downscale(quality-dependent)
     setProgressPhase(0, 12);
     const smaskScale = quality < 0.5 ? 0.45 : quality < 0.75 ? 0.6 : 0.75;
-    if (verboseLog) log(`  SMask 降解析度中(×${smaskScale})...`);
+    if (verboseLog) log(`  遮色片瘦身中(×${smaskScale})...`);
     const sm = await downscaleSMasks(pdfDoc, smaskScale, (i, t) => {
-      if (verboseLog) updateLogLine(`  SMask 降解析度中... ${i}/${t}`);
+      if (verboseLog) updateLogLine(`  遮色片瘦身中... ${i}/${t}`);
       setProgress((i / t) * 100);
     });
-    if (verboseLog) updateLogLine(`  SMask 降解析度:${sm.count} 個,省 ${fmtMB(sm.saved)}`);
+    if (verboseLog) updateLogLine(`  遮色片瘦身(×${smaskScale}):${sm.count} 個,省 ${fmtMB(sm.saved)}`);
 
     if (verboseLog) log(`  實際處理 ${items.length} 張(去重後 unique)`);
 
@@ -2481,7 +2485,7 @@
       const big = ranked[0], small = ranked[ranked.length - 1];
       const bigQ = Math.max(0.3, Math.min(0.95, quality * 1.25));
       const smallQ = Math.max(0.3, Math.min(0.95, quality * 0.75));
-      log(`  智慧分配:大圖 ${big.w}×${big.h} q≈${bigQ.toFixed(2)} → 小圖 ${small.w}×${small.h} q≈${smallQ.toFixed(2)}`);
+      log(`  智慧分配:大圖 ${big.w}×${big.h} 畫質 ${Math.round(bigQ * 100)}% → 小圖 ${small.w}×${small.h} 畫質 ${Math.round(smallQ * 100)}%`);
     }
 
     // Phase 12-78%: recompress image main loop(大頭)
@@ -2536,10 +2540,10 @@
       const allLabels = ['jp2', 'mozjpeg', 'oxipng', 'canvas-jpg'];
       const parts = allLabels.map(k => `${labelMap[k]}=${codecWins.get(k) || 0}`).filter((_, i) => (codecWins.get(allLabels[i]) || 0) > 0);
       const totalWins = Array.from(codecWins.values()).reduce((a, b) => a + b, 0);
-      log(`  Codec:${parts.join(' · ')} | 動 ${totalWins}、未動 ${skipped}`);
+      log(`  壓縮引擎:${parts.join(' · ')} | 動 ${totalWins}、未動 ${skipped}`);
       // Fovea 統計
       if (bgImageCount > 0 || plateImageCount > 0) {
-        log(`  Fovea:跨頁背景圖 ${bgImageCount} 張、均勻色塊圖 ${plateImageCount} 張(額外加重壓)`);
+        log(`  偵測重點:背景底圖 ${bgImageCount} 張、大色塊圖 ${plateImageCount} 張(額外壓一點)`);
       }
     }
     if (verboseLog && skipped > 0) {
@@ -2548,7 +2552,7 @@
     }
     if (verboseLog) {
       const dangling = validateMaskRefs(pdfDoc);
-      if (dangling > 0) log(`  ⚠ 警告:${dangling} 個 SMask/Mask ref 懸空(可能出現灰底)`);
+      if (dangling > 0) log(`  ⚠ 提醒:${dangling} 張遮色片連結異常(少數圖可能出現灰底)`);
     }
     // save() 是 CPU-bound,用 CSS transition 讓動物在 compositor 繼續爬
     creepToFinish();
@@ -2573,7 +2577,7 @@
 
     setProgressPhase(0, 8);
     const smaskScale = quality < 0.5 ? 0.45 : quality < 0.75 ? 0.6 : 0.75;
-    if (verboseLog) log(`  SMask scale=${smaskScale}`);
+    if (verboseLog) log(`  遮色片瘦身(×${smaskScale})`);
     await downscaleSMasks(pdfDoc, smaskScale, (i, t) => setProgress((i / t) * 100));
 
     // 分配 / Fovea 計算
@@ -2625,8 +2629,8 @@
       const parts = ['jp2', 'mozjpeg', 'oxipng', 'canvas-jpg'].map(k => `${labelMap[k]}=${codecWins.get(k) || 0}`).filter((_, i) => (codecWins.get(['jp2','mozjpeg','oxipng','canvas-jpg'][i]) || 0) > 0);
       const wins = candidates.filter(c => c).length;
       const sumBytes = candidates.reduce((s, c) => s + (c ? c.bytes.length : 0), 0);
-      log(`  Codec:${parts.join(' · ')} | 圖片總 ${fmtMB(sumBytes)}、可動 ${wins}/${items.length}`);
-      if (bgCount || plateCount) log(`  Fovea:背景圖 ${bgCount}、色塊 ${plateCount}`);
+      log(`  壓縮引擎:${parts.join(' · ')} | 圖片總 ${fmtMB(sumBytes)}、可動 ${wins}/${items.length}`);
+      if (bgCount || plateCount) log(`  偵測重點:背景底圖 ${bgCount}、大色塊圖 ${plateCount}`);
     }
     return { items, candidates, itemDims, rankByIdx, isPageBgLike, smaskScale };
   }
@@ -2724,7 +2728,7 @@
       used += bestCost;
       if (upgradeRounds > 5000) break; // safety
     }
-    if (log2) log2(`  Greedy 升級 ${upgradeRounds} 輪 → 最終拼合 ${fmtMB(used)}`);
+    if (log2) log2(`  逐步升級 ${upgradeRounds} 輪 → 最終拼合 ${fmtMB(used)}`);
 
     return { choices, estimatedTotal: used };
   }
@@ -2739,7 +2743,7 @@
     const highSp = setpoints.reduce((acc, sp) => acc.quality > sp.quality ? acc : sp);
     const useQ = highSp.quality;
     const smaskScale = useQ < 0.5 ? 0.45 : useQ < 0.75 ? 0.6 : 0.75;
-    if (verboseLog) log(`  SMask 降解析度(用最高 quality 設定)scale=${smaskScale}...`);
+    if (verboseLog) log(`  遮色片瘦身(使用最高畫質設定)...`);
     setProgressPhase(0, 10);
     await downscaleSMasks(pdfDoc, smaskScale, (i, t) => setProgress((i / t) * 100));
 
@@ -2763,8 +2767,11 @@
       setProgress(((i + 1) / items.length) * 100);
     }
     if (verboseLog) {
-      const dist = setpoints.map((sp, i) => `${sp.label}(q=${sp.quality.toFixed(2)})${pickedSetpoints[i]}`).join(' · ');
-      log(`  拼合完成:套 ${applied} 張 → ${dist}`);
+      const dist = setpoints.map((sp, i) => {
+        const lbl = sp.label === 'L' ? '低' : sp.label === 'H' ? '高' : '中';
+        return `${lbl}畫質 ${pickedSetpoints[i]} 張`;
+      }).join(' · ');
+      log(`  拼合完成:共套 ${applied} 張 → ${dist}`);
     }
     creepToFinish();
     await waitForCompositorCommit();
@@ -2788,7 +2795,7 @@
       const factor = Math.pow(midR / anchorR, 1 / 3.5);
       const ts = Math.min(1.0, goodRec.scale * factor);
       const tq = Math.min(0.95, goodRec.quality * factor);
-      log(`\n[上探 ${i + 1}] scale=${ts.toFixed(2)} quality=${tq.toFixed(2)}(提升畫質)`);
+      log(`\n[試提升畫質 ${i + 1}](縮放 ${Math.round(ts * 100)}% · 畫質 ${Math.round(tq * 100)}%)`);
       startRace();
       checkCancelled();
       const tb = await buildFn(ts, tq);
@@ -2819,7 +2826,7 @@
       highQuality = historyOver.quality;
     } else {
       // 先試 MAX:若 MAX 達標直接收工,否則 MAX 作為 high bound
-      log(`\n[上探 試最大畫質] scale=${MAX_S.toFixed(2)} quality=${MAX_Q.toFixed(2)}`);
+      log(`\n[試最大畫質](縮放 ${Math.round(MAX_S * 100)}% · 畫質 ${Math.round(MAX_Q * 100)}%)`);
       checkCancelled();
       const maxBytes = await buildFn(MAX_S, MAX_Q);
       log(`  → ${fmtMB(maxBytes.length)}`);
@@ -2838,7 +2845,7 @@
       const ts = Math.min(MAX_S, lowScale * factor);
       const tq = Math.min(MAX_Q, lowQuality * factor);
       if (Math.abs(ts - lowScale) < 0.005) break;
-      log(`\n[上探 ${i + 1}] scale=${ts.toFixed(2)} quality=${tq.toFixed(2)}`);
+      log(`\n[試提升畫質 ${i + 1}](縮放 ${Math.round(ts * 100)}% · 畫質 ${Math.round(tq * 100)}%)`);
       checkCancelled();
       const tb = await buildFn(ts, tq);
       log(`  → ${fmtMB(tb.length)}`);
@@ -2857,23 +2864,23 @@
   }
 
   async function shrinkPreserve(file, targetBytes, codec) {
-    log(`模式:保留文字層(只壓圖片) · 編碼:Smart`);
+    log(`模式:保留文字(只壓圖片)`);
     log(`讀取 PDF ...`);
     const origBuf = await file.arrayBuffer();
 
     const probeDoc = await PDFLib.PDFDocument.load(origBuf, { updateMetadata: false });
     const probeImages = await collectImageStreams(probeDoc);
-    log(`可處理的 JPEG 影像物件:${probeImages.length} 個`);
+    log(`可壓縮的圖片:${probeImages.length} 張`);
     if (probeImages.length === 0) {
-      throw new Error('此 PDF 內沒有 JPEG 影像可壓縮。保留文字層模式無法生效,請改用「最大壓縮」。');
+      throw new Error('這個 PDF 裡沒有可壓縮的圖片(可能是純文字 PDF)。「保留文字」模式沒東西可壓,請改用「整頁轉圖片」模式。');
     }
 
     const ratio = targetBytes / file.size;
     let [scale, quality] = pickStartPreserve(ratio);
-    log(`\n目標比例 ${(ratio * 100).toFixed(1)}%,起點 scale=${scale} quality=${quality}`);
+    log(`\n目標比例 ${(ratio * 100).toFixed(1)}% · 起點:縮放 ${Math.round(scale * 100)}% · 畫質 ${Math.round(quality * 100)}%`);
 
     // 預處理(只跑一次)— 跟 quality 無關的步驟全做完
-    log('\n[預處理] 跑一次 dedup / GC / Form / ICC / Flate(後續上探不再重做)');
+    log('\n[預處理] 整理重複資料、釋放空間(只做一次)');
     startRace();
     const prepBytes = await prepareDocumentBytes(origBuf, log);
 
@@ -2882,13 +2889,13 @@
     let lastBytes = null;
 
     for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
-      log(`\n[第 ${attempt} 次] scale=${scale.toFixed(2)} quality=${quality.toFixed(2)}`);
+      log(`\n[第 ${attempt} 次](縮放 ${Math.round(scale * 100)}% · 畫質 ${Math.round(quality * 100)}%)`);
       startRace();
       const bytes = await buildPreservePdf(prepBytes, scale, quality, codec, true);
       log(`  → ${fmtMB(bytes.length)}`);
       if (bytes.length <= targetBytes) {
         // 達標 → 啟動「多版本探測 + 智慧拼合」(取代盲目 upProbe)
-        log(`\n[第 1 次達標] 啟動智慧拼合:多版本探測 + Knapsack`);
+        log(`\n[達標!] 開始微調,找最佳畫質組合`);
         const setpointsHigh = { scale: 1.0, quality: 0.95, label: 'H' };
         const setpointsMid = { scale: Math.min(1.0, (scale + 1.0) / 2), quality: Math.min(0.95, (quality + 0.95) / 2), label: 'M' };
         const setpointsLow = { scale, quality, label: 'L' };
@@ -2898,14 +2905,15 @@
         const probeResults = [];
         for (let s = 0; s < setpoints.length; s++) {
           const sp = setpoints[s];
-          log(`\n[第 ${attempt + 1 + s} 次:探測 ${sp.label}] scale=${sp.scale.toFixed(2)} quality=${sp.quality.toFixed(2)}`);
+          const spLabel = sp.label === 'L' ? '低' : sp.label === 'H' ? '高' : '中';
+          log(`\n[第 ${attempt + 1 + s} 次:${spLabel}畫質測試](縮放 ${Math.round(sp.scale * 100)}% · 畫質 ${Math.round(sp.quality * 100)}%)`);
           startRace();
           const probe = await buildPreservePdfProbe(prepBytes, sp.scale, sp.quality, codec, true);
           probeResults.push(probe);
         }
 
         // Knapsack 拼合
-        log(`\n[第 ${attempt + 1 + setpoints.length} 次:智慧拼合]`);
+        log(`\n[智慧拼合] 每張圖挑最佳版本`);
         const items = probeResults[0].items;
         const { choices, estimatedTotal } = knapsackPickChoices(setpoints, probeResults, items, prepBytes.length, targetBytes, log);
 
@@ -2925,9 +2933,9 @@
         const marginal = (prev.bytes - curr.bytes) / prev.bytes;
         if (marginal < 0.03 && curr.bytes > targetBytes * 1.05) {
           throw new Error(
-            `已逼近本模式壓縮下限(${fmtMB(curr.bytes)},邊際效益僅 ${(marginal * 100).toFixed(1)}%)。\n` +
-            `文字層/字體/向量等非 JPEG 內容無法再壓。\n` +
-            `→ 改「最大壓縮(整頁變圖)」可把文字層也壓掉、繼續壓到 ${fmtMB(targetBytes)}。`
+            `已經壓到這個模式的極限(${fmtMB(curr.bytes)})。\n` +
+            `文字、字體、向量圖本身就佔這麼多空間,無法再壓。\n` +
+            `→ 想更小請改「整頁轉圖片」模式,可壓到 ${fmtMB(targetBytes)}(缺點是文字不能再複製)。`
           );
         }
       }
@@ -2948,13 +2956,13 @@
       }
 
       if (est) {
-        log(`  估:非 JPEG 常數 ≈ ${fmtMB(est.C)},JPEG 可壓縮池 ≈ ${fmtMB(est.J)}`);
+        log(`  估算:文字字體向量 ≈ ${fmtMB(est.C)}、可壓縮圖 ≈ ${fmtMB(est.J)}`);
         if (est.C >= targetBytes * 0.95) {
           throw new Error(
-            `此 PDF 的非 JPEG 部分(文字層+字體+向量)約 ${fmtMB(est.C)},` +
-            `已接近或超過目標 ${fmtMB(targetBytes)}。\n` +
-            `本模式無論怎麼壓 JPEG 都卡在 ${fmtMB(est.C)} 附近。\n` +
-            `→ 改「最大壓縮(整頁變圖)」可把文字層也壓掉、達標。`
+            `這個 PDF 光是文字、字體、向量圖就佔 ${fmtMB(est.C)},` +
+            `超過你設的目標 ${fmtMB(targetBytes)}。\n` +
+            `不管怎麼壓圖都卡在這附近下不去。\n` +
+            `→ 想達標請改「整頁轉圖片」模式(缺點是文字不能再複製)。`
           );
         }
         const curr = history[history.length - 1];
@@ -2970,12 +2978,12 @@
       // fallback:估不出來時用舊公式
       [scale, quality] = refineParams(scale, quality, bytes.length, targetBytes);
     }
-    throw new Error(`試 ${MAX_TRIES} 次仍未達標,最後 ${fmtMB(lastBytes.length)}。可改用「最大壓縮」或提高目標。`);
+    throw new Error(`試 ${MAX_TRIES} 次壓不到目標,最後 ${fmtMB(lastBytes.length)}。請調大目標,或改「整頁轉圖片」模式(可壓更小)。`);
   }
 
   async function shrinkViewPreserve(file, maxPx, label, codec, quality = 0.85, qLabel = '標準') {
-    log(`模式:保留文字層 + 觀看解析度 ${label} · 畫質:${qLabel} · 編碼:Smart`);
-    log(`目標像素上限:${maxPx}px(最長邊),quality=${quality}`);
+    log(`模式:保留文字 · 裝置:${label} · 畫質:${qLabel}`);
+    log(`目標像素上限:${maxPx}px(最長邊)· 畫質 ${Math.round(quality * 100)}%`);
     const origBuf = await file.arrayBuffer();
     const pdfDoc = await PDFLib.PDFDocument.load(origBuf, { updateMetadata: false });
     startRace();
@@ -2985,9 +2993,9 @@
     if (dup.count > 0) log(`影像去重:合併 ${dup.count} 個重複,省 ${fmtMB(dup.saved)}`);
     stripMetadata(pdfDoc);
     const items = await collectImageStreams(pdfDoc);
-    log(`可處理影像:${items.length} 個(JPEG + PNG-like)`);
+    log(`可處理影像:${items.length} 張(JPEG + 含透明圖)`);
     if (items.length === 0) {
-      throw new Error('此 PDF 內沒有可處理的影像。');
+      throw new Error('這個 PDF 裡沒有可壓縮的圖片(可能是純文字 PDF)。請改用「整頁轉圖片」模式。');
     }
 
     // SMask 降解析度(grayscale alpha 降邊長 → bytes 變平方比例減少)
@@ -2996,7 +3004,7 @@
     const sm = await downscaleSMasks(pdfDoc, smaskScale, (i, t) => {
       setProgress((i / t) * 100);
     });
-    if (sm.count > 0) log(`SMask 降解析度(×${smaskScale}):${sm.count} 個,省 ${fmtMB(sm.saved)}`);
+    if (sm.count > 0) log(`遮色片瘦身(×${smaskScale}):${sm.count} 個,省 ${fmtMB(sm.saved)}`);
 
     // 智慧分配:依像素數排名,大圖品質加權、小圖降權
     const itemDims = items.map((it, idx) => {
@@ -3027,8 +3035,8 @@
       const big = ranked[0], small = ranked[ranked.length - 1];
       const bigQ = Math.max(0.5, Math.min(0.98, quality * 1.18));
       const smallQ = Math.max(0.5, Math.min(0.98, quality * 0.88));
-      log(`智慧分配:大圖 ${big.w}×${big.h} q≈${bigQ.toFixed(2)} → 小圖 ${small.w}×${small.h} q≈${smallQ.toFixed(2)}`);
-      log(`多版本探測:top ${topBigIdx.size} 張最大圖會跑兩個品質,挑最佳`);
+      log(`智慧分配:大圖 ${big.w}×${big.h} 畫質 ${Math.round(bigQ * 100)}% → 小圖 ${small.w}×${small.h} 畫質 ${Math.round(smallQ * 100)}%`);
+      log(`最大的 ${topBigIdx.size} 張會試更清晰版本,划算才升級`);
     }
 
     let downscaled = 0, reencoded = 0, unchanged = 0;
@@ -3089,11 +3097,11 @@
       const codecStats = Array.from(codecWins.entries())
         .sort((a, b) => b[1] - a[1])
         .map(([k, v]) => `${k}(${v})`).join(', ');
-      log(`Codec 賽馬贏家:${codecStats}`);
+      log(`壓縮引擎使用次數:${codecStats}`);
     }
-    if (bgImageCount > 0) log(`Fovea:跨頁背景圖 ${bgImageCount} 張降 15%`);
-    if (plateImageCount > 0) log(`Fovea:均勻色塊圖 ${plateImageCount} 張(plate 自動偵測)`);
-    if (probeUpgradeCount > 0) log(`多版本探測:${probeUpgradeCount} 張大圖升級到更高品質`);
+    if (bgImageCount > 0) log(`偵測到背景底圖 ${bgImageCount} 張,額外壓一點`);
+    if (plateImageCount > 0) log(`偵測到大色塊圖 ${plateImageCount} 張,額外壓一點`);
+    if (probeUpgradeCount > 0) log(`${probeUpgradeCount} 張大圖找到更清晰的版本`);
     // save() 是 CPU-bound,用 CSS transition 讓動物在 compositor 繼續爬
     creepToFinish();
     await waitForCompositorCommit();
@@ -3103,7 +3111,7 @@
   }
 
   async function shrinkViewRaster(file, maxPx, label, codec, quality = 0.85, qLabel = '標準') {
-    log(`模式:最大壓縮 + 觀看解析度 ${label} · 畫質:${qLabel} · 編碼:Smart`);
+    log(`模式:整頁轉圖片 · 裝置:${label} · 畫質:${qLabel}`);
     log(`每頁最長邊上限:${maxPx}px,quality=${quality}`);
     const buf = await file.arrayBuffer();
     const doc = await pdfjsLib.getDocument({ data: buf }).promise;

@@ -1,22 +1,36 @@
 # 🦖 ChompPDF 🦈
 
-> 離線 PDF 壓縮工具 — 直接雙擊 `index.html` 即可使用，無需安裝、無需網路。
+> 把 PDF 變小的小工具。檔案不離開你的電腦，安心用。
 
-## 功能
+## 馬上用
 
-- **智慧壓縮**：MozJPEG + OxiPNG 雙引擎賽馬，自動選最小
-- **多版本探測 + Knapsack 拼合**：對每張圖分別算出最佳品質，整體達標又最清晰
-- **注視點技術**：背景底圖低品質壓縮，前景主體保留細節
-- **完全離線**：WASM 內嵌為 base64，不依賴網路或伺服器
-- **兩種模式**：「最小化」求容量極限 / 「保留畫質」在目標 MB 內保留最佳品質
+**線上版**（點開就能用）：[https://ahlung.github.io/chomp-pdf](https://ahlung.github.io/chomp-pdf)
 
-## 使用方式
+或者下載整個資料夾，雙擊裡面的 `index.html`，在瀏覽器打開就好 —— 不用安裝、不用帳號、不用網路。
 
-直接下載後雙擊 `index.html` 在瀏覽器打開即可。
+## 適合什麼情況
 
-或透過 GitHub Pages 線上使用：[https://ahlung.github.io/chomp-pdf](https://ahlung.github.io/chomp-pdf)
+- Gmail / LINE 說「檔案太大」寄不出去
+- 履歷 / 提案 / 報告要上傳系統但卡大小限制
+- 手機存一堆 PDF 想瘦身
+- 掃描文件、相片 PDF 動輒幾十 MB 想壓小
 
-## 授權
+## 怎麼壓
 
-- 壓縮核心：[MozJPEG](https://github.com/mozilla/mozjpeg)（Apache-2.0）、[OxiPNG via jSquash](https://github.com/nicolo-ribaudo/squoosh)（Apache-2.0）
-- PDF 解析：[pdf.js](https://github.com/mozilla/pdf.js)（Apache-2.0）、[pdf-lib](https://github.com/Hopding/pdf-lib)（MIT）
+1. 把 PDF 拖進網頁（或點一下選檔）
+2. 工具會自動幫你算出「建議縮到多少 MB」
+3. 按一下**壓縮**，等一下就好
+4. 下載結果
+
+想自己設定大小、或整頁變圖片讓檔案更小，也可以調整。
+
+## 為什麼可以「離線用」
+
+整個工具就是一個 HTML 檔，所有壓縮功能（JPEG / PNG 引擎）都包在裡面。打開後完全在你瀏覽器跑，**檔案不會上傳到任何地方**。
+
+## 授權與來源
+
+- 壓縮引擎：[MozJPEG](https://github.com/mozilla/mozjpeg)、[OxiPNG](https://github.com/shssoichiro/oxipng)（Apache-2.0）
+- PDF 處理：[pdf.js](https://github.com/mozilla/pdf.js)（Apache-2.0）、[pdf-lib](https://github.com/Hopding/pdf-lib)（MIT）
+
+作者：[AhLung](https://portaly.cc/AhLung)
