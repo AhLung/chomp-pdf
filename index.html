@@ -2979,8 +2979,8 @@
     const origBuf = await file.arrayBuffer();
     const pdfDoc = await PDFLib.PDFDocument.load(origBuf, { updateMetadata: false });
     startRace();
-    // Phase 0-8%: dedup(無 tick,靠 heartbeat 爬)
-    setProgressPhase(0, 8);
+    // Phase 0-6%: dedup
+    setProgressPhase(0, 6);
     const dup = await dedupImages(pdfDoc);
     if (dup.count > 0) log(`影像去重:合併 ${dup.count} 個重複,省 ${fmtMB(dup.saved)}`);
     stripMetadata(pdfDoc);
@@ -2990,14 +2990,56 @@
       throw new Error('此 PDF 內沒有可處理的影像。');
     }
 
+    // SMask 降解析度(grayscale alpha 降邊長 → bytes 變平方比例減少)
+    setProgressPhase(6, 6);
+    const smaskScale = quality < 0.5 ? 0.45 : quality < 0.75 ? 0.6 : 0.75;
+    const sm = await downscaleSMasks(pdfDoc, smaskScale, (i, t) => {
+      setProgress((i / t) * 100);
+    });
+    if (sm.count > 0) log(`SMask 降解析度(×${smaskScale}):${sm.count} 個,省 ${fmtMB(sm.saved)}`);
+
+    // 智慧分配:依像素數排名,大圖品質加權、小圖降權
+    const itemDims = items.map((it, idx) => {
+      const w = it.dict.get(PDFLib.PDFName.of('Width'))?.asNumber?.() || 0;
+      const h = it.dict.get(PDFLib.PDFName.of('Height'))?.asNumber?.() || 0;
+      return { idx, pixels: w * h, w, h };
+    });
+    const ranked = itemDims.slice().sort((a, b) => b.pixels - a.pixels);
+    const rankByIdx = new Map();
+    for (let r = 0; r < ranked.length; r++) {
+      rankByIdx.set(ranked[r].idx, ranked.length === 1 ? 0 : r / (ranked.length - 1));
+    }
+    // 頁面 aspect ratio — 偵測跨頁背景圖
+    const pages = pdfDoc.getPages();
+    const pageARs = pages.map(p => {
+      const w = p.getWidth(), h = p.getHeight();
+      return h > 0 ? w / h : 1;
+    });
+    const isPageBgLike = (w, h, rank) => {
+      if (rank > 0.3) return false;
+      if (h <= 0) return false;
+      const imgAR = w / h;
+      return pageARs.some(par => Math.abs(par - imgAR) / par < 0.15);
+    };
+    // Top 3 biggest images → multi-probe(兩個品質,挑提升明顯不爆 size 的)
+    const topBigIdx = new Set(ranked.slice(0, Math.min(3, ranked.length)).map(x => x.idx));
+    if (ranked.length > 1) {
+      const big = ranked[0], small = ranked[ranked.length - 1];
+      const bigQ = Math.max(0.5, Math.min(0.98, quality * 1.18));
+      const smallQ = Math.max(0.5, Math.min(0.98, quality * 0.88));
+      log(`智慧分配:大圖 ${big.w}×${big.h} q≈${bigQ.toFixed(2)} → 小圖 ${small.w}×${small.h} q≈${smallQ.toFixed(2)}`);
+      log(`多版本探測:top ${topBigIdx.size} 張最大圖會跑兩個品質,挑最佳`);
+    }
+
     let downscaled = 0, reencoded = 0, unchanged = 0;
+    let bgImageCount = 0, plateImageCount = 0, probeUpgradeCount = 0;
     const codecWins = new Map();
     log('');
-    // Phase 8-82%: 主迴圈
-    setProgressPhase(8, 74);
+    // Phase 12-85%: 主迴圈
+    setProgressPhase(12, 73);
     for (let i = 0; i < items.length; i++) {
       if (i % 5 === 0) checkCancelled();
-      const { ref, obj, dict } = items[i];
+      const { ref, obj, dict, filterType, hasMask } = items[i];
       const widthObj = dict.get(PDFLib.PDFName.of('Width'));
       const heightObj = dict.get(PDFLib.PDFName.of('Height'));
       const origW = widthObj && widthObj.asNumber ? widthObj.asNumber() : 0;
@@ -3006,12 +3048,31 @@
       else {
         const longest = Math.max(origW, origH);
         const scale = Math.min(1.0, maxPx / longest);
-        const result = await recompressImage(obj.contents, scale, quality, codec, items[i].filterType, dict, pdfDoc.context, !!items[i].hasMask);
+        // rank 0(最大)→ 1.18x boost,rank 1(最小)→ 0.88x
+        const rank = rankByIdx.get(i) ?? 0.5;
+        const boost = 1.18 - rank * 0.30;
+        // Fovea:跨頁背景圖額外 0.85x
+        const bgPenalty = isPageBgLike(origW, origH, rank) ? 0.85 : 1.0;
+        if (bgPenalty < 1) bgImageCount++;
+        const perQuality = Math.max(0.5, Math.min(0.98, quality * boost * bgPenalty));
+        let result = await recompressImage(obj.contents, scale, perQuality, codec, filterType, dict, pdfDoc.context, !!hasMask);
+        // Multi-probe:top 3 最大圖再試一個更高品質,如果 size 沒爆 >1.4x 就升級
+        if (result && topBigIdx.has(i)) {
+          const probeQuality = Math.max(0.5, Math.min(0.98, perQuality * 1.18));
+          if (probeQuality > perQuality + 0.02) {
+            const probeRes = await recompressImage(obj.contents, scale, probeQuality, codec, filterType, dict, pdfDoc.context, !!hasMask);
+            if (probeRes && probeRes.bytes.length <= result.bytes.length * 1.4 && probeRes.bytes.length < obj.contents.length) {
+              result = probeRes;
+              probeUpgradeCount++;
+            }
+          }
+        }
         if (result && result.bytes.length < obj.contents.length) {
           applyImageReplacement(pdfDoc, ref, dict, origW, origH, scale, result);
           if (scale < 1.0) downscaled++; else reencoded++;
           const lbl = result.label || 'unknown';
           codecWins.set(lbl, (codecWins.get(lbl) || 0) + 1);
+          if (result.plateLike) plateImageCount++;
         } else {
           unchanged++;
         }
@@ -3030,6 +3091,9 @@
         .map(([k, v]) => `${k}(${v})`).join(', ');
       log(`Codec 賽馬贏家:${codecStats}`);
     }
+    if (bgImageCount > 0) log(`Fovea:跨頁背景圖 ${bgImageCount} 張降 15%`);
+    if (plateImageCount > 0) log(`Fovea:均勻色塊圖 ${plateImageCount} 張(plate 自動偵測)`);
+    if (probeUpgradeCount > 0) log(`多版本探測:${probeUpgradeCount} 張大圖升級到更高品質`);
     // save() 是 CPU-bound,用 CSS transition 讓動物在 compositor 繼續爬
     creepToFinish();
     await waitForCompositorCommit();
