@@ -1,0 +1,3142 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChompPDF</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #faf9f5;
+    --surface: #ffffff;
+    --surface-2: #f5f0e6;
+    --border: rgba(61, 57, 41, 0.1);
+    --border-strong: rgba(61, 57, 41, 0.18);
+    --text: #3d3929;
+    --text-2: #6b6453;
+    --text-3: #9b9383;
+    --accent: #c96442;
+    --accent-2: #a84f30;
+    --accent-soft: rgba(201, 100, 66, 0.12);
+    --ocean: #0891b2;
+    --ocean-soft: rgba(8, 145, 178, 0.14);
+    --sand: #f5e6c8;
+    --grass: #84cc16;
+    --success: #10b981;
+    --success-2: #059669;
+    --success-soft: rgba(16, 185, 129, 0.14);
+    --warn: #d97706;
+    --warn-soft: rgba(217, 119, 6, 0.14);
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-lg: 20px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1f1d16;
+      --surface: #2a2720;
+      --surface-2: #34302a;
+      --border: rgba(245, 230, 200, 0.08);
+      --border-strong: rgba(245, 230, 200, 0.16);
+      --text: #f5efe0;
+      --text-2: #beb4a0;
+      --text-3: #8c8574;
+      --accent: #e08968;
+      --accent-2: #f4a584;
+      --accent-soft: rgba(224, 137, 104, 0.18);
+      --ocean: #22d3ee;
+      --ocean-soft: rgba(34, 211, 238, 0.16);
+      --sand: #5c4a2e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--text); }
+  body {
+    font-family: -apple-system, "SF Pro Text", "Inter", system-ui, sans-serif;
+    font-size: 15px;
+    max-width: 560px;
+    margin: 56px auto 80px;
+    padding: 0 20px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 {
+    margin: 0 0 6px;
+    font-family: "Tiempos Text", "New York", Georgia, "Times New Roman", serif;
+    font-size: 32px; font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  h1 .emoji { font-family: -apple-system, "Apple Color Emoji", sans-serif; margin-right: 4px; }
+  h1 .version {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    vertical-align: middle;
+    margin-left: 10px;
+    padding: 2px 8px;
+    background: var(--surface-2);
+    color: var(--text-3);
+    border-radius: 999px;
+    letter-spacing: 0;
+  }
+  .sub {
+    color: var(--text-2); font-size: 14px;
+    margin-bottom: 28px;
+  }
+
+  /* Dropzone */
+  #drop {
+    display: block;
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 44px 24px;
+    text-align: center;
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+    cursor: pointer;
+    transition: border-color .2s, background .2s, transform .1s;
+  }
+  #drop:hover { border-color: var(--accent); }
+  #drop.hover { border-color: var(--accent); background: var(--accent-soft); }
+  #drop strong { font-weight: 600; }
+  #drop .hint { color: var(--text-3); font-size: 13px; margin-top: 6px; }
+  input[type=file] { display: none; }
+
+  #fileInfo {
+    font-size: 13px; color: var(--text-2);
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: inline-block;
+  }
+  #fileInfo:empty { display: none; }
+  #analysis {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    display: none;
+  }
+  #analysis .breakdown { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; margin-top: 6px; line-height: 1.8; }
+  #analysis .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 6px 0; border: 1px solid var(--border); }
+  #analysis .bar .jpeg { background: var(--accent); }
+  #analysis .bar .other { background: var(--text-3); }
+  #cancel {
+    background: linear-gradient(180deg, #ef4444, #b91c1c);
+    box-shadow: 0 2px 8px rgba(239,68,68,0.3);
+    margin-left: 8px;
+  }
+  #cancel:hover:not(:disabled) { box-shadow: 0 8px 20px rgba(239,68,68,0.4); }
+
+  /* Rows */
+  .row {
+    display: flex; align-items: center; gap: 10px;
+    margin: 18px 0;
+    flex-wrap: wrap;
+  }
+  .row > label:not(.radio),
+  .row > .mode-label {
+    font-size: 13px; font-weight: 500;
+    color: var(--text-2);
+    min-width: 68px;
+  }
+  .row > span:not(.mode-label) { font-size: 13px; color: var(--text-2); }
+
+  /* Number / select */
+  input[type=number], select {
+    font: inherit; font-size: 14px;
+    padding: 9px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input[type=number]:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  input[type=number] { width: 96px; }
+
+  /* Segmented pill radios */
+  .mode-row { gap: 10px 12px; }
+  [hidden] { display: none !important; }
+  .row-hint {
+    font-size: 12px;
+    color: var(--text-3);
+    margin: -10px 0 4px 0;
+    padding-left: 72px;
+    line-height: 1.5;
+  }
+  .radio {
+    position: relative;
+    font-size: 13px; font-weight: 500;
+    cursor: pointer;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--text-2);
+    transition: all .15s;
+    user-select: none;
+  }
+  .radio input { position: absolute; opacity: 0; pointer-events: none; }
+  .radio:hover { border-color: var(--border-strong); color: var(--text); }
+  .radio:has(input:checked) {
+    background: var(--accent-soft);
+    color: var(--accent-2);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* Primary button */
+  button {
+    font: inherit; font-size: 15px; font-weight: 600;
+    padding: 11px 24px;
+    background: linear-gradient(180deg, var(--accent) 0%, var(--accent-2) 100%);
+    color: white; border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(201, 100, 66, 0.32), inset 0 1px 0 rgba(255,255,255,0.16);
+    transition: transform .1s, box-shadow .15s, opacity .15s;
+  }
+  button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(201, 100, 66, 0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+  }
+  button:active:not(:disabled) { transform: translateY(0); }
+  button:disabled {
+    background: var(--border-strong); color: var(--text-3);
+    cursor: not-allowed; box-shadow: none;
+  }
+
+  /* Log */
+  #log {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px; line-height: 1.6;
+    white-space: pre-wrap;
+    min-height: 44px;
+    max-height: 320px; overflow-y: auto;
+    color: var(--text-2);
+  }
+  #log:empty::before { content: "就緒。"; color: var(--text-3); }
+
+  /* Download */
+  #download {
+    display: none;
+    margin-top: 14px;
+    padding: 11px 20px;
+    background: linear-gradient(180deg, var(--success) 0%, var(--success-2) 100%);
+    color: white; text-decoration: none; font-weight: 600;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3), inset 0 1px 0 rgba(255,255,255,0.15);
+    transition: transform .1s, box-shadow .15s;
+  }
+  #download:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+  }
+
+  /* Warning */
+  .warn {
+    margin-top: 16px;
+    font-size: 12.5px; line-height: 1.6;
+    color: var(--text-2);
+    background: var(--warn-soft);
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--warn);
+  }
+  .warn strong { color: var(--text); }
+
+  /* Mascots 場景:天空 + 海 + 沙灘,壓縮中兼任進度條 */
+  .mascots {
+    --progress: 0;
+    position: relative;
+    height: 110px;
+    margin-top: 28px;
+    overflow: hidden;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: linear-gradient(
+      to bottom,
+      #e0f2fe 0%, #bae6fd 34%,
+      #7dd3fc 34%, #0ea5e9 72%,
+      #fef3c7 72%, #fde68a 100%
+    );
+    transition: filter .4s;
+  }
+  .mascots::before {
+    /* 進度條(壓縮時顯示在底部) */
+    content: "";
+    position: absolute; left: 0; bottom: 0; height: 3px;
+    width: calc(var(--progress) * 1%);
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    opacity: 0;
+    transition: width .3s ease-out, opacity .3s;
+  }
+  .mascots.busy::before { opacity: 0.9; }
+  .mascots::after {
+    /* 海面反光水平線 */
+    content: "";
+    position: absolute; left: 0; right: 0; top: 34%;
+    height: 2px;
+    background: repeating-linear-gradient(90deg,
+      rgba(255,255,255,0.8) 0 8px, transparent 8px 14px);
+    opacity: 0.6;
+  }
+  @media (prefers-color-scheme: dark) {
+    .mascots {
+      background: linear-gradient(to bottom,
+        #1e3a5f 0%, #2563eb 34%,
+        #0284c7 34%, #075985 72%,
+        #78716c 72%, #57534e 100%);
+    }
+  }
+
+  .scene { position: absolute; user-select: none; pointer-events: none; }
+  .scene.sun {
+    top: 4px; right: 14px;
+    font-size: 22px;
+    animation: sunBob 4s ease-in-out infinite;
+  }
+  .scene.cloud {
+    font-size: 18px;
+    opacity: 0.95;
+    filter: brightness(1.15);
+    top: 8px;
+    animation: floatCloud 38s linear infinite;
+  }
+  .scene.cloud-2 { top: 16px; font-size: 14px; animation-delay: -22s; animation-duration: 52s; }
+
+  /* Wrapper 結構:.mascot 外層負責水平位置(transform: translateX),
+     .m-inner 負責 bob / cheer / winnerCelebrate 等垂直動畫。
+     兩層 transform 獨立,不會互相覆蓋。 */
+  .mascot {
+    position: absolute;
+    line-height: 1;
+    will-change: transform;
+    user-select: none;
+    font-size: 26px;
+    left: 0;
+    transform: translateX(6px); /* idle 起點 */
+    transition: transform .5s ease-out;
+  }
+  .mascot.shark { bottom: 34px; }
+  .mascot.dino { bottom: 6px; }
+  .m-inner {
+    display: inline-block;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.18));
+    animation: idleBob 2.2s ease-in-out infinite alternate;
+  }
+  .mascot.dino .m-inner {
+    animation: idleBob 2.6s ease-in-out infinite alternate;
+    animation-delay: -1.3s;
+  }
+  @keyframes idleBob {
+    0%   { transform: translateY(0); }
+    100% { transform: translateY(-3px); }
+  }
+  /* 壓縮中:外層 .mascot 的 transform: translateX 跟著進度走,
+     compositor thread 跑,不受 JS block 影響。
+     標準 transition 2s linear:單步進度連續插值。 */
+  .mascots.busy .mascot.shark {
+    transform: translateX(var(--shark-tx, 6px));
+    transition: transform 2s linear;
+  }
+  .mascots.busy .mascot.dino {
+    transform: translateX(var(--dino-tx, 6px));
+    transition: transform 2s linear;
+  }
+  .mascots.busy .m-inner {
+    animation: bob 0.6s ease-in-out infinite alternate;
+  }
+  .mascots.busy .mascot.dino .m-inner {
+    animation-delay: -0.3s;
+  }
+  /* creeping:進 save() 前,transition 拉長,compositor 一路插到 95% 位置 */
+  .mascots.busy.creeping .mascot.shark,
+  .mascots.busy.creeping .mascot.dino {
+    transition: transform var(--creep-duration, 15s) linear;
+  }
+  /* 完成:保留 --shark-tx 當前位置,讓 declareWinner 設 100% 後接得上 */
+  .mascots.done .mascot.shark {
+    transform: translateX(var(--shark-tx, 6px));
+  }
+  .mascots.done .mascot.dino {
+    transform: translateX(var(--dino-tx, 6px));
+  }
+  .mascots.done .m-inner {
+    animation: cheer 0.6s ease-in-out 3;
+  }
+  /* 冠軍 — 金光 + 放大 + 旋轉歡呼(動畫在 .m-inner,光暈/字級在 .mascot) */
+  .mascots.shark-won .mascot.shark,
+  .mascots.dino-won .mascot.dino {
+    z-index: 2;
+    font-size: 32px;
+  }
+  .mascots.shark-won .mascot.shark .m-inner,
+  .mascots.dino-won .mascot.dino .m-inner {
+    animation: winnerCelebrate 0.5s ease-in-out infinite alternate;
+    filter: drop-shadow(0 0 12px #fbbf24) drop-shadow(0 2px 3px rgba(0,0,0,0.25));
+  }
+  .mascots.shark-won .mascot.shark::after,
+  .mascots.dino-won .mascot.dino::after {
+    content: "🏆";
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 18px;
+    filter: none;
+    animation: trophyBounce 0.5s ease-in-out infinite alternate;
+  }
+  @keyframes winnerCelebrate {
+    0%   { transform: scaleX(1) translateY(0) rotate(-6deg); }
+    100% { transform: scaleX(1) translateY(-8px) rotate(6deg); }
+  }
+  @keyframes trophyBounce {
+    0%   { transform: translate(-50%, 0) scale(1); }
+    100% { transform: translate(-50%, -4px) scale(1.15); }
+  }
+  .mascots.busy .scene.sun     { animation-duration: 1.2s; }
+  .mascots.done { filter: saturate(1.3) brightness(1.05); }
+  .mascots.done .mascot { animation: cheer 0.6s ease-in-out 3; }
+  .mascots.done::before {
+    content: "🎉";
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    font-size: 24px;
+    animation: cheer 0.6s ease-in-out 3;
+  }
+
+  @keyframes swim {
+    0%   { left: -40px;                transform: scaleX(1)  translateY(0); }
+    48%  { left: calc(100% + 10px);    transform: scaleX(1)  translateY(-2px); }
+    50%  { left: calc(100% + 10px);    transform: scaleX(-1) translateY(0); }
+    98%  { left: -40px;                transform: scaleX(-1) translateY(2px); }
+    100% { left: -40px;                transform: scaleX(1)  translateY(0); }
+  }
+  @keyframes walk {
+    0%,100% { left: calc(100% + 10px); transform: scaleX(-1) translateY(0); }
+    10%     { left: 92%;               transform: scaleX(-1) translateY(-4px); }
+    20%     { left: 80%;               transform: scaleX(-1) translateY(0); }
+    48%     { left: -40px;             transform: scaleX(-1) translateY(0); }
+    50%     { left: -40px;             transform: scaleX(1)  translateY(0); }
+    60%     { left: 20%;               transform: scaleX(1)  translateY(-4px); }
+    70%     { left: 40%;               transform: scaleX(1)  translateY(0); }
+    98%     { left: calc(100% + 10px); transform: scaleX(1)  translateY(0); }
+  }
+  @keyframes cheer {
+    0%,100% { transform: translateY(0) scale(1); }
+    50%     { transform: translateY(-14px) scale(1.25); }
+  }
+  @keyframes bob {
+    0%   { transform: scaleX(1) translateY(0); }
+    100% { transform: scaleX(1) translateY(-3px); }
+  }
+  @keyframes sunBob {
+    0%,100% { transform: translateY(0) rotate(0deg); }
+    50%     { transform: translateY(-2px) rotate(20deg); }
+  }
+  @keyframes floatCloud {
+    0%   { left: -40px; }
+    100% { left: calc(100% + 20px); }
+  }
+
+</style>
+</head>
+<body>
+
+<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.1.0</span></h1>
+<div class="sub">離線壓縮 PDF · 鯊魚跟恐龍幫你搞定 · 100% 本機處理</div>
+
+<label id="drop" for="file">
+  <div><strong>拖 PDF 進來</strong> 或點這裡選檔</div>
+  <div class="hint">單檔、不上傳任何地方</div>
+</label>
+<input type="file" id="file" accept="application/pdf">
+<div id="fileInfo"></div>
+<div id="codecStatus" style="font-size:11px;color:#888;margin:4px 0;"></div>
+<div id="analysis"></div>
+
+<div class="row mode-row">
+  <span class="mode-label">目標</span>
+  <label class="radio"><input type="radio" name="tgtType" value="size" checked> 指定檔案大小</label>
+  <label class="radio"><input type="radio" name="tgtType" value="view"> 觀看解析度</label>
+</div>
+<div class="row-hint" id="tgtHint">固定檔案大小上限,畫質自動調到剛好符合</div>
+
+<div class="row" id="rowSize">
+  <label for="target">上限</label>
+  <input type="number" id="target" min="0.1" step="0.1" value="5">
+  <span>MB</span>
+</div>
+
+<div class="row" id="rowView" style="display:none">
+  <label for="view">在哪看</label>
+  <select id="view">
+    <option value="mobile">手機(寬約 1200px)</option>
+    <option value="720p">720p HD 螢幕(1280px)</option>
+    <option value="1080p" selected>1080p 螢幕(1920px)</option>
+    <option value="1440p">1440p / 2K 螢幕(2560px)</option>
+    <option value="4k">4K 螢幕(3840px)</option>
+  </select>
+</div>
+
+<div class="row mode-row" id="rowViewQuality" style="display:none">
+  <span class="mode-label">畫質</span>
+  <label class="radio"><input type="radio" name="vq" value="low"> 低(最小檔)</label>
+  <label class="radio"><input type="radio" name="vq" value="std" checked> 標準</label>
+  <label class="radio"><input type="radio" name="vq" value="high"> 高(保真)</label>
+</div>
+
+<div class="row mode-row">
+  <span class="mode-label">壓縮方式</span>
+  <label class="radio"><input type="radio" name="mode" value="preserve" checked> 保留文字層(可選取)</label>
+  <label class="radio"><input type="radio" name="mode" value="raster"> 最大壓縮(整頁變圖,文字變不可選)</label>
+</div>
+
+<div class="row mode-row" hidden>
+  <span class="mode-label">圖片編碼</span>
+  <label class="radio"><input type="radio" name="codec" value="smart" checked> Smart 自動(全跑取最小)</label>
+</div>
+
+<div class="row">
+  <button id="go" disabled>壓縮</button>
+  <button id="cancel" hidden>取消</button>
+</div>
+
+<div id="log"></div>
+<a id="download" download>下載結果</a>
+
+<div class="warn" id="warnMsg"></div>
+
+<div class="mascots" id="mascots" aria-hidden="true">
+  <span class="scene sun">☀️</span>
+  <span class="scene cloud cloud-1">☁️</span>
+  <span class="scene cloud cloud-2">☁️</span>
+  <span class="mascot shark"><span class="m-inner">🦈</span></span>
+  <span class="mascot dino"><span class="m-inner">🦖</span></span>
+</div>
+
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/openjpegwasm.js"></script>
+<script src="vendor/pako.min.js"></script>
+<script src="vendor/jsquash/codecs-bundle.js"></script>
+<script>
+(() => {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+
+  // Lazy-init JPEG 2000 encoder (WASM)
+  let _jpxModule = null;
+  async function getJpxModule() {
+    if (_jpxModule) return _jpxModule;
+    if (typeof OpenJPEGWASM !== 'function') throw new Error('openjpegwasm.js 未載入');
+    _jpxModule = await OpenJPEGWASM({
+      locateFile: (f) => f.endsWith('.wasm') ? 'vendor/openjpegwasm.wasm' : f
+    });
+    return _jpxModule;
+  }
+
+  async function encodeCanvasToJpx(canvas, compressionRatio) {
+    const mod = await getJpxModule();
+    const w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const encoder = new mod.J2KEncoder();
+    const buf = encoder.getDecodedBuffer({ width: w, height: h, bitsPerSample: 8, componentCount: 3, isSigned: false });
+    const plane = w * h;
+    // Interleaved RGBA → planar RGB (openjpeg 要求 RRRR...GGGG...BBBB)
+    for (let i = 0; i < plane; i++) {
+      buf[i]             = imgData.data[i * 4];
+      buf[i + plane]     = imgData.data[i * 4 + 1];
+      buf[i + plane * 2] = imgData.data[i * 4 + 2];
+    }
+    encoder.setQuality(false, 1);
+    encoder.setCompressionRatio(0, compressionRatio);
+    encoder.encode();
+    const view = encoder.getEncodedBuffer();
+    const out = new Uint8Array(view);
+    encoder.delete();
+    return out;
+  }
+
+  // canvas → {bytes, filter},支援 JPEG / JPEG 2000
+  // 從 canvas 取 ImageData(餵 MozJPEG / PNG 用)
+  function canvasToImageData(canvas) {
+    const c = canvas.getContext('2d');
+    return c.getImageData(0, 0, canvas.width, canvas.height);
+  }
+
+  // CRC32(PNG IEEE polynomial)— 編 PNG chunk 用
+  let _crcTable = null;
+  function crc32(bytes) {
+    if (!_crcTable) {
+      _crcTable = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xEDB88320 & -(c & 1));
+        _crcTable[n] = c >>> 0;
+      }
+    }
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = _crcTable[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function makePngChunk(type, data) {
+    const len = data.length;
+    const chunk = new Uint8Array(12 + len);
+    const dv = new DataView(chunk.buffer);
+    dv.setUint32(0, len);
+    for (let i = 0; i < 4; i++) chunk[4 + i] = type.charCodeAt(i);
+    chunk.set(data, 8);
+    dv.setUint32(8 + len, crc32(chunk.subarray(4, 8 + len)));
+    return chunk;
+  }
+
+  // 把 ImageData(RGBA)編成 RGB PNG(丟掉 alpha)— 給 OxiPNG 喂食
+  // 用 pako level 1 快速,後面 OxiPNG 會重新最佳化
+  function encodeRgbPng(imgData) {
+    if (typeof pako === 'undefined') return null;
+    const { data, width, height } = imgData;
+    const rowStride = width * 3 + 1;
+    const raw = new Uint8Array(rowStride * height);
+    for (let y = 0; y < height; y++) {
+      raw[y * rowStride] = 0; // PNG filter type 0 (None)
+      const dstRow = y * rowStride + 1;
+      const srcRow = y * width * 4;
+      for (let x = 0; x < width; x++) {
+        raw[dstRow + x * 3]     = data[srcRow + x * 4];
+        raw[dstRow + x * 3 + 1] = data[srcRow + x * 4 + 1];
+        raw[dstRow + x * 3 + 2] = data[srcRow + x * 4 + 2];
+      }
+    }
+    const idatRaw = pako.deflate(raw, { level: 1 });
+    const sig = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    const ihdrData = new Uint8Array(13);
+    const dv = new DataView(ihdrData.buffer);
+    dv.setUint32(0, width);
+    dv.setUint32(4, height);
+    ihdrData[8] = 8;  // bit depth
+    ihdrData[9] = 2;  // color type RGB
+    ihdrData[10] = 0; // compression deflate
+    ihdrData[11] = 0; // filter standard
+    ihdrData[12] = 0; // no interlace
+    const ihdrChunk = makePngChunk('IHDR', ihdrData);
+    const idatChunk = makePngChunk('IDAT', idatRaw);
+    const iendChunk = makePngChunk('IEND', new Uint8Array(0));
+    const total = sig.length + ihdrChunk.length + idatChunk.length + iendChunk.length;
+    const out = new Uint8Array(total);
+    let off = 0;
+    out.set(sig, off); off += sig.length;
+    out.set(ihdrChunk, off); off += ihdrChunk.length;
+    out.set(idatChunk, off); off += idatChunk.length;
+    out.set(iendChunk, off);
+    return out;
+  }
+
+  // 解析 PNG 拿 IHDR + 串接所有 IDAT(IDAT 內含 deflate-compressed scanlines + PNG predictor 標頭)
+  // 直接餵 PDF FlateDecode + Predictor 15 完美匹配
+  function extractPngIDAT(pngBytes) {
+    if (!pngBytes || pngBytes.length < 16) return null;
+    // PNG signature check
+    if (pngBytes[0] !== 0x89 || pngBytes[1] !== 0x50) return null;
+    let off = 8;
+    let width = 0, height = 0, bitDepth = 0, colorType = 0;
+    const idatChunks = [];
+    while (off + 8 <= pngBytes.length) {
+      const dv = new DataView(pngBytes.buffer, pngBytes.byteOffset + off);
+      const len = dv.getUint32(0);
+      const type = String.fromCharCode(pngBytes[off+4], pngBytes[off+5], pngBytes[off+6], pngBytes[off+7]);
+      const dataOff = off + 8;
+      if (dataOff + len > pngBytes.length) break;
+      if (type === 'IHDR') {
+        const dv2 = new DataView(pngBytes.buffer, pngBytes.byteOffset + dataOff);
+        width = dv2.getUint32(0);
+        height = dv2.getUint32(4);
+        bitDepth = pngBytes[dataOff + 8];
+        colorType = pngBytes[dataOff + 9];
+      } else if (type === 'IDAT') {
+        idatChunks.push(pngBytes.subarray(dataOff, dataOff + len));
+      } else if (type === 'IEND') break;
+      off = dataOff + len + 4; // +4 CRC
+    }
+    if (!width || !height || !idatChunks.length) return null;
+    let colors, colorspace;
+    if (colorType === 2) { colors = 3; colorspace = 'DeviceRGB'; }
+    else if (colorType === 0) { colors = 1; colorspace = 'DeviceGray'; }
+    else return null; // RGBA / palette / Gray+A 暫不支援
+    const total = idatChunks.reduce((a, c) => a + c.length, 0);
+    const idat = new Uint8Array(total);
+    let p = 0;
+    for (const c of idatChunks) { idat.set(c, p); p += c.length; }
+    return { idat, width, height, bitDepth, colors, colorspace };
+  }
+
+  // 編碼策略:永遠序列跑 JP2 + MozJPEG +(小圖 OxiPNG),取最小
+  // 序列避免 WASM 並行搶 CPU。codec 參數保留只做 fallback,實際永遠跑 smart
+  async function encodeCanvas(canvas, quality, codec) {
+    const W = canvas.width, H = canvas.height;
+    const isSmall = (W * H <= 240 * 240);
+    let imgData = null;
+    const getImgData = () => imgData || (imgData = canvasToImageData(canvas));
+    const results = [];
+
+    // JP2
+    try {
+      const ratio = Math.max(5, Math.min(150, 15 / Math.max(0.1, quality)));
+      const bytes = await encodeCanvasToJpx(canvas, ratio);
+      results.push({ bytes, filter: 'JPXDecode', label: 'jp2' });
+    } catch (_) {}
+
+    // MozJPEG(WASM fallback to canvas JPEG)
+    if (window.JsCodecs && window.JsCodecs.encodeMozJpeg) {
+      try {
+        const bytes = await window.JsCodecs.encodeMozJpeg(getImgData(), quality);
+        results.push({ bytes, filter: 'DCTDecode', label: 'mozjpeg' });
+      } catch (e) { console.warn('MozJPEG fail:', e); }
+    } else {
+      try {
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality));
+        results.push({ bytes: new Uint8Array(await blob.arrayBuffer()), filter: 'DCTDecode', label: 'canvas-jpg' });
+      } catch (_) {}
+    }
+
+    // OxiPNG 小圖賽馬
+    if (isSmall && window.JsCodecs && window.JsCodecs.optimisePng) {
+      try {
+        const pngRaw = encodeRgbPng(getImgData());
+        if (pngRaw) {
+          const optimized = await window.JsCodecs.optimisePng(pngRaw, 3);
+          const parsed = extractPngIDAT(optimized);
+          if (parsed) results.push({ bytes: parsed.idat, filter: 'FlateDecode-PNG', pngMeta: parsed, label: 'oxipng' });
+        }
+      } catch (_) {}
+    }
+
+    if (results.length === 0) {
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality));
+      return { bytes: new Uint8Array(await blob.arrayBuffer()), filter: 'DCTDecode', label: 'canvas-jpg' };
+    }
+    results.sort((a, b) => a.bytes.length - b.bytes.length);
+    return results[0];
+  }
+
+  // FlateDecode 影像解碼:Flate inflate → PNG/TIFF predictor → ImageData
+  function paeth(a, b, c) {
+    const p = a + b - c;
+    const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+    if (pa <= pb && pa <= pc) return a;
+    if (pb <= pc) return b;
+    return c;
+  }
+
+  function applyPngPredictor(raw, columns, colors, bits) {
+    if (bits !== 8) return null;
+    const bpp = colors;
+    const rowBytes = columns * bpp;
+    const rowStride = rowBytes + 1;
+    const numRows = Math.floor(raw.length / rowStride);
+    const out = new Uint8Array(numRows * rowBytes);
+    let prevRow = new Uint8Array(rowBytes);
+    for (let y = 0; y < numRows; y++) {
+      const ft = raw[y * rowStride];
+      const rowOff = y * rowStride + 1;
+      const outOff = y * rowBytes;
+      for (let x = 0; x < rowBytes; x++) {
+        const a = x >= bpp ? out[outOff + x - bpp] : 0;
+        const b = prevRow[x];
+        const c = x >= bpp ? prevRow[x - bpp] : 0;
+        let pred = 0;
+        switch (ft) {
+          case 0: pred = 0; break;
+          case 1: pred = a; break;
+          case 2: pred = b; break;
+          case 3: pred = (a + b) >> 1; break;
+          case 4: pred = paeth(a, b, c); break;
+          default: return null;
+        }
+        out[outOff + x] = (raw[rowOff + x] + pred) & 0xFF;
+      }
+      prevRow = out.subarray(outOff, outOff + rowBytes);
+    }
+    return out;
+  }
+
+  // TIFF predictor 2:sample-by-sample 差分(同一 row 內)
+  function applyTiffPredictor(raw, columns, colors, bits) {
+    if (bits !== 8) return null;
+    const rowBytes = columns * colors;
+    const numRows = Math.floor(raw.length / rowBytes);
+    const out = new Uint8Array(numRows * rowBytes);
+    for (let y = 0; y < numRows; y++) {
+      const off = y * rowBytes;
+      for (let x = 0; x < rowBytes; x++) {
+        const prev = x >= colors ? out[off + x - colors] : 0;
+        out[off + x] = (raw[off + x] + prev) & 0xFF;
+      }
+    }
+    return out;
+  }
+
+  // 把「每 pixel bits 位元」的封裝資料拆成「每 sample 1 byte」
+  function unpackBits(raw, columns, rows, colors, bits) {
+    if (bits === 8) return raw;
+    const out = new Uint8Array(columns * rows * colors);
+    const maxVal = (1 << bits) - 1;
+    const scale = 255 / maxVal;
+    let bitPos = 0;
+    const rowBitStride = Math.ceil(columns * colors * bits / 8) * 8; // row byte-aligned
+    for (let y = 0; y < rows; y++) {
+      bitPos = y * rowBitStride;
+      for (let x = 0; x < columns * colors; x++) {
+        let v = 0;
+        for (let b = 0; b < bits; b++) {
+          const byte = raw[(bitPos + b) >> 3];
+          if (byte === undefined) return null;
+          const bit = (byte >> (7 - ((bitPos + b) & 7))) & 1;
+          v = (v << 1) | bit;
+        }
+        out[y * columns * colors + x] = Math.round(v * scale);
+        bitPos += bits;
+      }
+    }
+    return out;
+  }
+
+  // 取 16-bit(big-endian)降為 8-bit
+  function downTo8bit(raw, totalSamples) {
+    const out = new Uint8Array(totalSamples);
+    for (let i = 0; i < totalSamples; i++) {
+      out[i] = raw[i * 2]; // 高 byte 即 8-bit 值
+    }
+    return out;
+  }
+
+  // 取 ColorSpace 資訊:返 {kind, colors, palette?}
+  function parseColorSpace(csObj, ctx) {
+    if (!csObj) return { kind: 'DeviceRGB', colors: 3 };
+    const name = csObj.encodedName;
+    if (name === '/DeviceGray' || name === '/G') return { kind: 'DeviceGray', colors: 1 };
+    if (name === '/DeviceRGB' || name === '/RGB') return { kind: 'DeviceRGB', colors: 3 };
+    if (name === '/DeviceCMYK' || name === '/CMYK') return { kind: 'DeviceCMYK', colors: 4 };
+    if (csObj.array) {
+      const first = csObj.get(0);
+      const firstName = first?.encodedName;
+      if (firstName === '/Indexed') {
+        // [/Indexed base hival lookup]
+        const base = csObj.get(1);
+        const hival = csObj.get(2)?.asNumber?.() || 255;
+        const lookup = csObj.get(3);
+        let paletteBytes = null;
+        try {
+          if (lookup && lookup.constructor && lookup.constructor.name === 'PDFRef') {
+            const s = ctx.lookup(lookup);
+            if (s && s.contents) {
+              // stream,可能 Flate 壓縮
+              const filter = s.dict?.get?.(PDFLib.PDFName.of('Filter'));
+              const fn = filter && (filter.encodedName || filter.toString());
+              if (fn === '/FlateDecode' || fn === '/Fl') {
+                try { paletteBytes = pako.inflate(s.contents); } catch (e) { paletteBytes = null; }
+              } else {
+                paletteBytes = s.contents;
+              }
+            }
+          } else if (lookup && lookup.asBytes) {
+            paletteBytes = lookup.asBytes();
+          } else if (lookup && lookup.value !== undefined) {
+            const str = lookup.value;
+            paletteBytes = new Uint8Array(str.length);
+            for (let i = 0; i < str.length; i++) paletteBytes[i] = str.charCodeAt(i) & 0xFF;
+          }
+        } catch (_) { paletteBytes = null; }
+        const baseInfo = parseColorSpace(base, ctx);
+        return { kind: 'Indexed', colors: 1, base: baseInfo, hival, palette: paletteBytes };
+      }
+      if (firstName === '/ICCBased') {
+        // [/ICCBased stream] — fallback 到 stream dict 裡 /N 欄位 (1/3/4)
+        const streamRef = csObj.get(1);
+        try {
+          const s = ctx.lookup(streamRef);
+          const n = s?.dict?.get?.(PDFLib.PDFName.of('N'))?.asNumber?.();
+          if (n === 1) return { kind: 'DeviceGray', colors: 1 };
+          if (n === 3) return { kind: 'DeviceRGB', colors: 3 };
+          if (n === 4) return { kind: 'DeviceCMYK', colors: 4 };
+        } catch (_) {}
+        return { kind: 'DeviceRGB', colors: 3 };
+      }
+      if (firstName === '/CalGray') return { kind: 'DeviceGray', colors: 1 };
+      if (firstName === '/CalRGB') return { kind: 'DeviceRGB', colors: 3 };
+    }
+    return null;
+  }
+
+  function decodeFlateImage(bytes, dict, ctx) {
+    if (typeof pako === 'undefined') return null;
+    const N = (n) => PDFLib.PDFName.of(n);
+    const width = dict.get(N('Width'))?.asNumber?.() || 0;
+    const height = dict.get(N('Height'))?.asNumber?.() || 0;
+    const bits = dict.get(N('BitsPerComponent'))?.asNumber?.() || 8;
+    if (width === 0 || height === 0) return null;
+    if (![1, 2, 4, 8, 16].includes(bits)) return null;
+
+    const cs = parseColorSpace(dict.get(N('ColorSpace')), ctx);
+    if (!cs) return null;
+
+    // Flate inflate
+    let raw;
+    try { raw = pako.inflate(bytes); } catch (e) { return null; }
+
+    // Predictor
+    const dp = dict.get(N('DecodeParms'));
+    const predictor = dp?.get?.(N('Predictor'))?.asNumber?.() || 1;
+    const dpCols = dp?.get?.(N('Columns'))?.asNumber?.() || width;
+    const dpColors = dp?.get?.(N('Colors'))?.asNumber?.() || cs.colors;
+    const dpBits = dp?.get?.(N('BitsPerComponent'))?.asNumber?.() || bits;
+
+    let unpredicted;
+    if (predictor >= 10) {
+      // PNG predictor — 先做於 packed bytes(bits/8 對齊),再拆 bit
+      if (dpBits === 8) {
+        unpredicted = applyPngPredictor(raw, dpCols, dpColors, 8);
+        if (!unpredicted) return null;
+      } else {
+        // non-8bit predictor 複雜,略做簡化:如果 raw 長度剛好 = numRows × (rowBytes+1),跑 PNG predictor after unpack
+        // 多數 PDF PNG predictor + non-8bit 實務少見,先 skip
+        return null;
+      }
+    } else if (predictor === 2) {
+      unpredicted = applyTiffPredictor(raw, dpCols, dpColors, 8);
+      if (!unpredicted) return null;
+    } else {
+      unpredicted = raw;
+    }
+
+    // Bit unpack
+    let pixels = unpredicted;
+    if (bits !== 8) {
+      if (bits === 16) {
+        pixels = downTo8bit(unpredicted, width * height * cs.colors);
+      } else {
+        pixels = unpackBits(unpredicted, width, height, cs.colors, bits);
+        if (!pixels) return null;
+      }
+    }
+
+    const expected = width * height * cs.colors;
+    if (pixels.length < expected) return null;
+
+    // 轉 RGBA
+    const rgba = new Uint8ClampedArray(width * height * 4);
+    if (cs.kind === 'DeviceRGB') {
+      for (let i = 0, j = 0; i < width * height; i++, j += 3) {
+        rgba[i*4] = pixels[j]; rgba[i*4+1] = pixels[j+1]; rgba[i*4+2] = pixels[j+2]; rgba[i*4+3] = 255;
+      }
+    } else if (cs.kind === 'DeviceGray') {
+      for (let i = 0; i < width * height; i++) {
+        const g = pixels[i];
+        rgba[i*4] = g; rgba[i*4+1] = g; rgba[i*4+2] = g; rgba[i*4+3] = 255;
+      }
+    } else if (cs.kind === 'DeviceCMYK') {
+      for (let i = 0, j = 0; i < width * height; i++, j += 4) {
+        const c = pixels[j], m = pixels[j+1], y = pixels[j+2], k = pixels[j+3];
+        rgba[i*4]   = 255 - Math.min(255, c + k);
+        rgba[i*4+1] = 255 - Math.min(255, m + k);
+        rgba[i*4+2] = 255 - Math.min(255, y + k);
+        rgba[i*4+3] = 255;
+      }
+    } else if (cs.kind === 'Indexed') {
+      if (!cs.palette || !cs.base) return null;
+      const baseColors = cs.base.colors;
+      for (let i = 0; i < width * height; i++) {
+        const idx = pixels[i] * baseColors;
+        if (idx + baseColors - 1 >= cs.palette.length) { rgba[i*4+3] = 255; continue; }
+        if (cs.base.kind === 'DeviceRGB') {
+          rgba[i*4]   = cs.palette[idx];
+          rgba[i*4+1] = cs.palette[idx+1];
+          rgba[i*4+2] = cs.palette[idx+2];
+        } else if (cs.base.kind === 'DeviceGray') {
+          const g = cs.palette[idx];
+          rgba[i*4] = g; rgba[i*4+1] = g; rgba[i*4+2] = g;
+        } else if (cs.base.kind === 'DeviceCMYK') {
+          const c = cs.palette[idx], m = cs.palette[idx+1], y = cs.palette[idx+2], k = cs.palette[idx+3];
+          rgba[i*4]   = 255 - Math.min(255, c + k);
+          rgba[i*4+1] = 255 - Math.min(255, m + k);
+          rgba[i*4+2] = 255 - Math.min(255, y + k);
+        }
+        rgba[i*4+3] = 255;
+      }
+    } else return null;
+
+    return { width, height, imgData: new ImageData(rgba, width, height) };
+  }
+
+  // 手動建 JPX Image XObject stream,回傳 PDFRef
+  function embedJpxImage(pdfDoc, jpxBytes, width, height) {
+    const ctx = pdfDoc.context;
+    const N = (n) => PDFLib.PDFName.of(n);
+    const imgDict = PDFLib.PDFDict.withContext(ctx);
+    imgDict.set(N('Type'), N('XObject'));
+    imgDict.set(N('Subtype'), N('Image'));
+    imgDict.set(N('Width'), PDFLib.PDFNumber.of(width));
+    imgDict.set(N('Height'), PDFLib.PDFNumber.of(height));
+    imgDict.set(N('ColorSpace'), N('DeviceRGB'));
+    imgDict.set(N('BitsPerComponent'), PDFLib.PDFNumber.of(8));
+    imgDict.set(N('Filter'), N('JPXDecode'));
+    const stream = PDFLib.PDFRawStream.of(imgDict, jpxBytes);
+    return ctx.register(stream);
+  }
+
+  // Image stream dedup:相同內容合併,效果最好(簡報常有大量重複 logo/範本)
+  function refKey(ref) { return `${ref.objectNumber},${ref.generationNumber}`; }
+
+  // SHA-1 hex(共用 helper,避免三處重複定義)
+  async function sha1Hex(bytes) {
+    const digest = await crypto.subtle.digest('SHA-1', bytes);
+    const arr = new Uint8Array(digest);
+    let hex = '';
+    for (let i = 0; i < arr.length; i++) hex += arr[i].toString(16).padStart(2, '0');
+    return hex;
+  }
+
+  // Batch SHA-1:Promise.all 並行,減少 event-loop roundtrip
+  async function sha1HexBatch(items, getBytes, onProgress) {
+    const BATCH = 32;
+    const results = new Array(items.length);
+    for (let i = 0; i < items.length; i += BATCH) {
+      checkCancelled();
+      if (onProgress) onProgress(i, items.length);
+      await new Promise(r => setTimeout(r, 0));
+      const slice = items.slice(i, i + BATCH);
+      const hashes = await Promise.all(slice.map(async (item, j) => {
+        const bytes = getBytes(item);
+        if (!bytes || bytes.length < 200) return null;
+        return await sha1Hex(bytes);
+      }));
+      for (let j = 0; j < hashes.length; j++) results[i + j] = hashes[j];
+    }
+    return results;
+  }
+
+  async function dedupImages(pdfDoc, onProgress) {
+    const ctx = pdfDoc.context;
+    const { PDFName, PDFRawStream } = PDFLib;
+    // 收所有 Image XObject
+    const items = [];
+    ctx.enumerateIndirectObjects().forEach(([ref, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const subtype = obj.dict.get(PDFName.of('Subtype'));
+      const subStr = subtype && (subtype.encodedName || subtype.toString());
+      if (subStr !== '/Image') return;
+      items.push({ ref, obj });
+    });
+    if (items.length < 2) return { count: 0, saved: 0 };
+
+    // 蒐集被當 SMask/Mask target 的 ref,同時做成 list 用 batch hash
+    const maskRefsToHash = new Set();
+    ctx.enumerateIndirectObjects().forEach(([_r, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      for (const k of ['SMask', 'Mask']) {
+        const v = obj.dict.get(PDFName.of(k));
+        if (v instanceof PDFLib.PDFRef) maskRefsToHash.add(refKey(v));
+      }
+    });
+    const maskTargets = [];
+    ctx.enumerateIndirectObjects().forEach(([r, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      if (!maskRefsToHash.has(refKey(r))) return;
+      maskTargets.push({ ref: r, obj });
+    });
+
+    const totalForProgress = maskTargets.length + items.length;
+    // Batch SHA-1 所有 mask target
+    const maskContentHash = new Map();
+    const maskHashes = await sha1HexBatch(maskTargets, (it) => it.obj.contents,
+      (done) => { if (onProgress) onProgress(done, totalForProgress); });
+    for (let i = 0; i < maskTargets.length; i++) {
+      if (maskHashes[i]) maskContentHash.set(refKey(maskTargets[i].ref), maskHashes[i]);
+    }
+
+    // Batch SHA-1 所有 image
+    const imageHashes = await sha1HexBatch(items, (it) => it.obj.contents,
+      (done) => { if (onProgress) onProgress(maskTargets.length + done, totalForProgress); });
+
+    const byHash = new Map();
+    const remap = new Map();
+    for (let i = 0; i < items.length; i++) {
+      const hex = imageHashes[i];
+      if (!hex) continue;
+      const { ref, obj } = items[i];
+      const sm = obj.dict.get(PDFName.of('SMask'));
+      const mk = obj.dict.get(PDFName.of('Mask'));
+      const smKey = sm instanceof PDFLib.PDFRef ? (maskContentHash.get(refKey(sm)) || refKey(sm)) : 'none';
+      const mkKey = mk instanceof PDFLib.PDFRef ? (maskContentHash.get(refKey(mk)) || refKey(mk)) : 'none';
+      const fullKey = `${hex}|${smKey}|${mkKey}`;
+      if (byHash.has(fullKey)) remap.set(refKey(ref), byHash.get(fullKey));
+      else byHash.set(fullKey, ref);
+    }
+    if (remap.size === 0) return { count: 0, saved: 0 };
+
+    // 遍歷 context 所有 indirect objects,把任何 XObject dict 的 refs 改向
+    // 這涵蓋 Page.Resources.XObject + Form.Resources.XObject + Pattern.Resources.XObject 等所有位置
+    const N = (n) => PDFLib.PDFName.of(n);
+    const patchXObjDict = (xobj) => {
+      if (!xobj || typeof xobj.entries !== 'function') return;
+      const entries = Array.from(xobj.entries());
+      for (const [name, val] of entries) {
+        if (!(val instanceof PDFLib.PDFRef)) continue;
+        const k = refKey(val);
+        if (remap.has(k)) xobj.set(name, remap.get(k));
+      }
+    };
+    ctx.enumerateIndirectObjects().forEach(([_r, indirectObj]) => {
+      let dict = null;
+      if (indirectObj instanceof PDFLib.PDFDict) {
+        dict = indirectObj;
+      } else if (indirectObj && indirectObj.dict && indirectObj.dict instanceof PDFLib.PDFDict) {
+        dict = indirectObj.dict;
+      }
+      if (!dict) return;
+      // Resources.XObject
+      try {
+        const res = dict.get(N('Resources'));
+        if (res && typeof res.get === 'function') patchXObjDict(res.get(N('XObject')));
+      } catch (_) {}
+      // 直接 XObject dict(Resources 本身當 XObject 引用)
+      try { patchXObjDict(dict.get(N('XObject'))); } catch (_) {}
+      // Image XObject dict 的 /SMask /Mask 引用(重要!如果 SMask 被 dedup,此處沒改會懸空)
+      for (const k of ['SMask', 'Mask']) {
+        try {
+          const v = dict.get(N(k));
+          if (v instanceof PDFLib.PDFRef && remap.has(refKey(v))) {
+            dict.set(N(k), remap.get(refKey(v)));
+          }
+        } catch (_) {}
+      }
+    });
+
+    // 刪重複 indirect objects
+    let saved = 0;
+    for (const [dupKey] of remap) {
+      const [on, gn] = dupKey.split(',').map(Number);
+      const dupRef = PDFLib.PDFRef.of(on, gn);
+      const dup = ctx.lookup(dupRef);
+      if (dup && dup.contents) saved += dup.contents.length;
+      try { ctx.delete(dupRef); } catch (_) {}
+    }
+    return { count: remap.size, saved };
+  }
+
+  // SMask 降解析度(grayscale alpha 降邊長 → bytes 變平方比例減少)
+  async function downscaleSMasks(pdfDoc, scaleFactor, onProgress) {
+    if (typeof pako === 'undefined') return { count: 0, saved: 0 };
+    const ctx = pdfDoc.context;
+    const { PDFName, PDFRawStream } = PDFLib;
+    const N = (n) => PDFName.of(n);
+
+    // 收所有被當 SMask 的 ref
+    const smaskRefs = new Set();
+    ctx.enumerateIndirectObjects().forEach(([_r, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const v = obj.dict.get(N('SMask'));
+      if (v instanceof PDFLib.PDFRef) smaskRefs.add(refKey(v));
+    });
+
+    const targets = [];
+    ctx.enumerateIndirectObjects().forEach(([ref, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      if (!smaskRefs.has(refKey(ref))) return;
+      const dict = obj.dict;
+      const filter = dict.get(N('Filter'));
+      const names = getFilterNames(filter);
+      if (names.length !== 1 || (names[0] !== 'FlateDecode' && names[0] !== 'Fl')) return;
+      const bpc = dict.get(N('BitsPerComponent'))?.asNumber?.() || 8;
+      if (bpc !== 8) return; // 非 8-bit alpha 太特殊,略
+      const cs = dict.get(N('ColorSpace'));
+      const csName = cs?.encodedName;
+      if (csName !== '/DeviceGray' && csName !== '/G') return;
+      // skip 帶 /Matte 的(pre-multiplied alpha,降解析度會破色補償)
+      if (dict.get(N('Matte'))) return;
+      targets.push({ ref, obj, dict });
+    });
+
+    let count = 0, saved = 0;
+    for (let i = 0; i < targets.length; i++) {
+      if (i % 20 === 0) {
+        checkCancelled();
+        if (onProgress) onProgress(i, targets.length);
+        await new Promise(r => setTimeout(r, 0));
+      }
+      const { ref, obj, dict } = targets[i];
+      const decoded = decodeFlateImage(obj.contents, dict, ctx);
+      if (!decoded) continue;
+      const { width, height, imgData } = decoded;
+      const newW = Math.max(1, Math.floor(width * scaleFactor));
+      const newH = Math.max(1, Math.floor(height * scaleFactor));
+      if (newW >= width || newH >= height) continue;
+
+      const srcC = document.createElement('canvas'); srcC.width = width; srcC.height = height;
+      srcC.getContext('2d').putImageData(imgData, 0, 0);
+      const dstC = document.createElement('canvas'); dstC.width = newW; dstC.height = newH;
+      dstC.getContext('2d').drawImage(srcC, 0, 0, newW, newH);
+      const dData = dstC.getContext('2d').getImageData(0, 0, newW, newH).data;
+      const gray = new Uint8Array(newW * newH);
+      for (let p = 0; p < newW * newH; p++) gray[p] = dData[p * 4];
+      srcC.width = srcC.height = 0; dstC.width = dstC.height = 0;
+
+      const compressed = pako.deflate(gray, { level: 9 });
+      if (compressed.length < obj.contents.length) {
+        const newDict = dict.clone();
+        newDict.set(N('Width'), PDFLib.PDFNumber.of(newW));
+        newDict.set(N('Height'), PDFLib.PDFNumber.of(newH));
+        newDict.set(N('ColorSpace'), N('DeviceGray'));
+        newDict.set(N('BitsPerComponent'), PDFLib.PDFNumber.of(8));
+        try { newDict.delete(N('DecodeParms')); } catch (_) {}
+        ctx.assign(ref, PDFRawStream.of(newDict, compressed));
+        saved += obj.contents.length - compressed.length;
+        count++;
+      }
+    }
+    return { count, saved };
+  }
+
+  // 對所有 FlateDecode stream lossless 重壓(image / content stream / CharProcs / Form / ICC / 字體 等都涵蓋)
+  async function recompressFlateLossless(pdfDoc, skipRefs, onProgress) {
+    if (typeof pako === 'undefined') return { count: 0, saved: 0 };
+    const ctx = pdfDoc.context;
+    const { PDFName, PDFRawStream } = PDFLib;
+    let count = 0, saved = 0;
+    const targets = [];
+    ctx.enumerateIndirectObjects().forEach(([ref, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      if (skipRefs && skipRefs.has(refKey(ref))) return;
+      const dict = obj.dict;
+      const filter = dict.get(PDFName.of('Filter'));
+      const names = getFilterNames(filter);
+      if (names.length !== 1 || (names[0] !== 'FlateDecode' && names[0] !== 'Fl')) return;
+      targets.push({ ref, obj, dict });
+    });
+    for (let i = 0; i < targets.length; i++) {
+      if (i % 20 === 0) {
+        checkCancelled();
+        if (onProgress) onProgress(i, targets.length);
+        await new Promise(r => setTimeout(r, 0));
+      }
+      const { ref, obj, dict } = targets[i];
+      const orig = obj.contents;
+      if (orig.length < 200) continue;
+      try {
+        const raw = pako.inflate(orig);
+        const recompressed = pako.deflate(raw, { level: 9 });
+        if (recompressed.length < orig.length) {
+          ctx.assign(ref, PDFRawStream.of(dict, recompressed));
+          saved += orig.length - recompressed.length;
+          count++;
+        }
+      } catch (_) {}
+    }
+    return { count, saved };
+  }
+
+  // Form XObject dedup:content + Resources 簽名 + BBox 都相同才合併
+  async function dedupFormXObjects(pdfDoc) {
+    const ctx = pdfDoc.context;
+    const { PDFRawStream, PDFName, PDFRef } = PDFLib;
+    const items = [];
+    ctx.enumerateIndirectObjects().forEach(([ref, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const subtype = obj.dict.get(PDFName.of('Subtype'));
+      const subStr = subtype && (subtype.encodedName || subtype.toString());
+      if (subStr !== '/Form') return;
+      items.push({ ref, obj });
+    });
+    if (items.length < 2) return { count: 0, saved: 0 };
+
+    // Batch SHA-1 所有 Form content
+    const contentHashes = await sha1HexBatch(items, (it) => it.obj.contents.length >= 100 ? it.obj.contents : null);
+
+    const byKey = new Map();
+    const remap = new Map();
+    for (let idx = 0; idx < items.length; idx++) {
+      const contentHash = contentHashes[idx];
+      if (!contentHash) continue;
+      const { ref, obj } = items[idx];
+      let resSig = '';
+      try {
+        const res = obj.dict.get(PDFName.of('Resources'));
+        if (res && res.entries) {
+          const parts = [];
+          for (const [name, val] of Array.from(res.entries())) {
+            let sub = (name.encodedName || '?') + '=';
+            if (val && val.entries) {
+              const subEntries = Array.from(val.entries()).map(([k, v]) => {
+                const vk = v instanceof PDFLib.PDFRef ? refKey(v) : '?';
+                return (k.encodedName || '?') + ':' + vk;
+              });
+              subEntries.sort();
+              sub += subEntries.join(',');
+            } else if (val instanceof PDFLib.PDFRef) {
+              sub += refKey(val);
+            }
+            parts.push(sub);
+          }
+          parts.sort();
+          resSig = parts.join('|');
+        }
+      } catch (_) {}
+      let bbox = '';
+      try {
+        const b_ = obj.dict.get(PDFName.of('BBox'));
+        if (b_ && b_.array) {
+          bbox = b_.array.map(x => (x && x.value !== undefined) ? x.value : (x && x.asNumber ? x.asNumber() : '?')).join(',');
+        }
+      } catch (_) {}
+      const fullKey = contentHash + '|' + resSig + '|' + bbox;
+      if (byKey.has(fullKey)) remap.set(refKey(ref), byKey.get(fullKey));
+      else byKey.set(fullKey, ref);
+    }
+    if (remap.size === 0) return { count: 0, saved: 0 };
+
+    const patchXObj = (xobj) => {
+      if (!xobj || typeof xobj.entries !== 'function') return;
+      for (const [name, val] of Array.from(xobj.entries())) {
+        if (!(val instanceof PDFLib.PDFRef)) continue;
+        const k = refKey(val);
+        if (remap.has(k)) xobj.set(name, remap.get(k));
+      }
+    };
+    ctx.enumerateIndirectObjects().forEach(([_, obj]) => {
+      const d = obj instanceof PDFLib.PDFDict ? obj : (obj && obj.dict);
+      if (!d || !d.get) return;
+      try {
+        const res = d.get(PDFName.of('Resources'));
+        if (res && res.get) patchXObj(res.get(PDFName.of('XObject')));
+      } catch (_) {}
+      try { patchXObj(d.get(PDFName.of('XObject'))); } catch (_) {}
+    });
+
+    let count = 0, saved = 0;
+    for (const [dupKey] of remap) {
+      const [on, gn] = dupKey.split(',').map(Number);
+      const dupRef = PDFRef.of(on, gn);
+      try {
+        const obj = ctx.lookup(dupRef);
+        if (obj && obj.contents) saved += obj.contents.length;
+        ctx.delete(dupRef);
+        count++;
+      } catch (_) {}
+    }
+    return { count, saved };
+  }
+
+  // ICC profile dedup — Canva 常為每張圖配獨立 sRGB ICC 但內容全相同,合併
+  async function dedupICCProfiles(pdfDoc) {
+    const ctx = pdfDoc.context;
+    const { PDFRawStream, PDFName, PDFRef } = PDFLib;
+
+    const isICCArray = (v) => {
+      if (!(v instanceof PDFLib.PDFArray) || v.size() < 2) return null;
+      const first = v.get(0);
+      const fname = first && first.encodedName;
+      if (fname !== '/ICCBased') return null;
+      const iccRef = v.get(1);
+      if (!(iccRef instanceof PDFLib.PDFRef)) return null;
+      return iccRef;
+    };
+
+    // 收所有被 /ICCBased 引用的 ref
+    const iccRefsToHash = new Set();
+    const walkContainer = (container) => {
+      if (!container || !container.get) return;
+      const scan = (v) => {
+        const iccRef = isICCArray(v);
+        if (iccRef) iccRefsToHash.add(refKey(iccRef));
+      };
+      try { scan(container.get(PDFName.of('ColorSpace'))); } catch (_) {}
+      try {
+        const res = container.get(PDFName.of('Resources'));
+        if (res && res.get) {
+          const csMap = res.get(PDFName.of('ColorSpace'));
+          if (csMap && csMap.entries) {
+            for (const [_k, val] of csMap.entries()) scan(val);
+          }
+        }
+      } catch (_) {}
+    };
+    ctx.enumerateIndirectObjects().forEach(([_, obj]) => {
+      const d = obj instanceof PDFLib.PDFDict ? obj : (obj && obj.dict);
+      walkContainer(d);
+    });
+
+    if (iccRefsToHash.size < 2) return { count: 0, saved: 0 };
+
+    // 收成 list 做 batch hash
+    const iccItems = [];
+    for (const rk of iccRefsToHash) {
+      const [on, gn] = rk.split(',').map(Number);
+      const iccRef = PDFRef.of(on, gn);
+      let obj;
+      try { obj = ctx.lookup(iccRef); } catch (_) { continue; }
+      if (!(obj instanceof PDFRawStream)) continue;
+      iccItems.push({ rk, iccRef, obj });
+    }
+    const iccHashes = await sha1HexBatch(iccItems, (it) => it.obj.contents);
+
+    const byHash = new Map();
+    const remap = new Map();
+    for (let i = 0; i < iccItems.length; i++) {
+      const hex = iccHashes[i];
+      if (!hex) continue;
+      const { rk, iccRef } = iccItems[i];
+      if (byHash.has(hex)) remap.set(rk, byHash.get(hex));
+      else byHash.set(hex, iccRef);
+    }
+    if (remap.size === 0) return { count: 0, saved: 0 };
+
+    // patch 所有 ColorSpace Array 的 ICC ref
+    const patchArr = (arr) => {
+      const iccRef = isICCArray(arr);
+      if (!iccRef) return;
+      const k = refKey(iccRef);
+      if (remap.has(k)) arr.set(1, remap.get(k));
+    };
+    ctx.enumerateIndirectObjects().forEach(([_, obj]) => {
+      const d = obj instanceof PDFLib.PDFDict ? obj : (obj && obj.dict);
+      if (!d || !d.get) return;
+      try { patchArr(d.get(PDFName.of('ColorSpace'))); } catch (_) {}
+      try {
+        const res = d.get(PDFName.of('Resources'));
+        if (res && res.get) {
+          const csMap = res.get(PDFName.of('ColorSpace'));
+          if (csMap && csMap.entries) {
+            for (const [_k, val] of csMap.entries()) patchArr(val);
+          }
+        }
+      } catch (_) {}
+    });
+
+    // 刪 dup ICC streams
+    let count = 0, saved = 0;
+    for (const [dupKey] of remap) {
+      const [on, gn] = dupKey.split(',').map(Number);
+      const dupRef = PDFRef.of(on, gn);
+      try {
+        const obj = ctx.lookup(dupRef);
+        if (obj && obj.contents) saved += obj.contents.length;
+        ctx.delete(dupRef);
+        count++;
+      } catch (_) {}
+    }
+    return { count, saved };
+  }
+
+  // 驗證:壓縮後所有 SMask/Mask ref 是否仍可查找
+  function validateMaskRefs(pdfDoc) {
+    const ctx = pdfDoc.context;
+    const { PDFName, PDFRawStream } = PDFLib;
+    let problems = 0;
+    ctx.enumerateIndirectObjects().forEach(([_, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const d = obj.dict;
+      for (const k of ['SMask', 'Mask']) {
+        const v = d.get(PDFName.of(k));
+        if (v instanceof PDFLib.PDFRef) {
+          try {
+            const t = ctx.lookup(v);
+            if (!t) problems++;
+          } catch (_) { problems++; }
+        }
+      }
+    });
+    return problems;
+  }
+
+  // GC:從 Catalog + Info 走可達樹,不可達的 indirect objects 全刪
+  async function garbageCollect(pdfDoc, onProgress) {
+    const ctx = pdfDoc.context;
+    const reachable = new Set();
+    const queue = [];
+
+    const ti = ctx.trailerInfo;
+    if (ti && ti.Root) queue.push(ti.Root);
+    if (ti && ti.Info) queue.push(ti.Info);
+
+    // 掃描期分配 GC 階段 0-50%,用 asymptotic fake progress
+    let yieldCounter = 0;
+    while (queue.length > 0) {
+      yieldCounter++;
+      if (yieldCounter % 300 === 0) {
+        checkCancelled();
+        // 假進度:處理愈多愈接近 50%,但永不到 50(留給 delete 階段)
+        if (onProgress) {
+          const fakeI = 50 * (1 - Math.exp(-yieldCounter / 2000));
+          onProgress(fakeI, 100);
+        }
+        // 用 setTimeout(0) 讓 compositor 收到新 transition target
+        await new Promise(r => setTimeout(r, 0));
+      }
+      const item = queue.pop();
+      if (!item) continue;
+      if (item instanceof PDFLib.PDFRef) {
+        const k = refKey(item);
+        if (reachable.has(k)) continue;
+        reachable.add(k);
+        try { queue.push(ctx.lookup(item)); } catch (_) {}
+      } else if (item instanceof PDFLib.PDFDict) {
+        try {
+          for (const [_, v] of item.entries()) queue.push(v);
+        } catch (_) {}
+      } else if (item instanceof PDFLib.PDFArray) {
+        try {
+          for (let i = 0; i < item.size(); i++) queue.push(item.get(i));
+        } catch (_) {}
+      } else if (item && item.dict) {
+        queue.push(item.dict);
+      }
+    }
+
+    // enumerate 也可能慢 — 給一個 50% mark
+    if (onProgress) onProgress(50, 100);
+    await new Promise(r => setTimeout(r, 0));
+
+    let count = 0, saved = 0;
+    const toDelete = [];
+    ctx.enumerateIndirectObjects().forEach(([ref, obj]) => {
+      if (reachable.has(refKey(ref))) return;
+      const sz = (obj && obj.contents) ? obj.contents.length : 64;
+      saved += sz;
+      count++;
+      toDelete.push(ref);
+    });
+    // Delete 期 50-100%
+    for (let i = 0; i < toDelete.length; i++) {
+      if (i % 200 === 0) {
+        checkCancelled();
+        if (onProgress) onProgress(50 + (i / Math.max(1, toDelete.length)) * 50, 100);
+        await new Promise(r => setTimeout(r, 0));
+      }
+      try { ctx.delete(toDelete[i]); } catch (_) {}
+    }
+    return { count, saved };
+  }
+
+  // 清 metadata、JavaScript、嵌入檔案、結構樹、書籤、annotation
+  function stripMetadata(pdfDoc) {
+    const ctx = pdfDoc.context;
+    const N = (n) => PDFLib.PDFName.of(n);
+    // Catalog-level clean
+    try {
+      const catalog = pdfDoc.catalog;
+      const toClean = ['Metadata', 'Names', 'AcroForm', 'StructTreeRoot', 'Outlines', 'PieceInfo', 'MarkInfo', 'OpenAction', 'AA', 'PageLabels', 'Threads'];
+      for (const k of toClean) {
+        try {
+          const v = catalog.get(N(k));
+          if (v instanceof PDFLib.PDFRef) {
+            ctx.delete(v);
+          }
+          catalog.delete(N(k));
+        } catch (_) {}
+      }
+    } catch (_) {}
+    // Page-level clean: /Annots /AA /Thumb /B(article beads)
+    try {
+      const pages = pdfDoc.getPages();
+      const pageKeysToClean = ['Annots', 'AA', 'Thumb', 'B', 'Tabs', 'PieceInfo'];
+      for (const page of pages) {
+        const pageDict = page.node;
+        for (const k of pageKeysToClean) {
+          try {
+            const v = pageDict.get(N(k));
+            if (v instanceof PDFLib.PDFRef) ctx.delete(v);
+            // /Annots 是 array,裡面每個 ref 也要刪
+            if (k === 'Annots' && v && typeof v.asArray === 'function') {
+              for (const a of v.asArray()) {
+                if (a instanceof PDFLib.PDFRef) {
+                  try { ctx.delete(a); } catch (_) {}
+                }
+              }
+            }
+            pageDict.delete(N(k));
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    // 清 trailer Info
+    try {
+      if (ctx.trailerInfo && ctx.trailerInfo.Info) {
+        const infoRef = ctx.trailerInfo.Info;
+        try { ctx.delete(infoRef); } catch (_) {}
+        ctx.trailerInfo.Info = undefined;
+      }
+    } catch (_) {}
+    // 清 ID(可選)
+    try {
+      if (ctx.trailerInfo && ctx.trailerInfo.ID) ctx.trailerInfo.ID = undefined;
+    } catch (_) {}
+  }
+
+  // 把 JPX image 畫到 page 上(full page)
+  function drawJpxOnPage(page, imgRef, width, height, keyName) {
+    page.node.setXObject(PDFLib.PDFName.of(keyName), imgRef);
+    page.pushOperators(
+      PDFLib.pushGraphicsState(),
+      PDFLib.concatTransformationMatrix(width, 0, 0, height, 0, 0),
+      PDFLib.drawObject(keyName),
+      PDFLib.popGraphicsState()
+    );
+  }
+
+  const $drop = document.getElementById('drop');
+  const $file = document.getElementById('file');
+  const $fileInfo = document.getElementById('fileInfo');
+  const $analysis = document.getElementById('analysis');
+  const $target = document.getElementById('target');
+  const $go = document.getElementById('go');
+  const $cancel = document.getElementById('cancel');
+  const $log = document.getElementById('log');
+  const $download = document.getElementById('download');
+  const $warn = document.getElementById('warnMsg');
+
+  let cancelRequested = false;
+  function checkCancelled() {
+    if (cancelRequested) throw new Error('使用者取消');
+  }
+
+  // Codec 狀態 banner — 啟動時實測哪些 codec 真的能用(file:// 對 OpenJPEG fetch 可能失敗)
+  (async () => {
+    await new Promise(r => setTimeout(r, 800));
+    const $cs = document.getElementById('codecStatus');
+    if (!$cs) return;
+    const hasMoz = !!(window.JsCodecs && window.JsCodecs.encodeMozJpeg);
+    const hasOxi = !!(window.JsCodecs && window.JsCodecs.optimisePng);
+    // JPX 用 fetch 載 WASM,實測一次
+    let hasJpx = false;
+    if (typeof OpenJPEGWASM === 'function') {
+      try {
+        await OpenJPEGWASM({ locateFile: (f) => f.endsWith('.wasm') ? 'vendor/openjpegwasm.wasm' : f });
+        hasJpx = true;
+      } catch (_) { hasJpx = false; }
+    }
+    const codecs = [];
+    codecs.push(hasMoz ? 'MozJPEG ✓' : 'MozJPEG ✗');
+    codecs.push(hasOxi ? 'OxiPNG ✓' : 'OxiPNG ✗');
+    codecs.push(hasJpx ? 'JPEG 2000 ✓' : 'JPEG 2000 ✗(file:// 限制,改成內嵌或用 http)');
+    $cs.textContent = '🔧 Smart 賽馬編碼器:' + codecs.join(' · ');
+    $cs.style.color = (hasMoz && hasOxi) ? '#0a8f4a' : '#c92a2a';
+  })();
+
+  let currentFile = null;
+
+  const VIEW_PRESETS = {
+    mobile: { maxPx: 1200, label: '手機' },
+    '720p': { maxPx: 1280, label: '720p HD' },
+    '1080p': { maxPx: 1920, label: '1080p' },
+    '1440p': { maxPx: 2560, label: '1440p/2K' },
+    '4k':    { maxPx: 3840, label: '4K' }
+  };
+
+  const WARN_MSG = {
+    preserve: '壓縮所有影像(JPEG + PNG-like),<strong>文字層、向量圖、書籤完整保留</strong>。先做影像去重 + 清 metadata,再壓圖。文字為主/圖少的 PDF 空間有限。CCITTFax/JBIG2/1-bit 黑白 / Indexed 調色盤圖會跳過不壓。',
+    raster: '把每頁重新光柵化成 JPEG/JPEG 2000。<strong>壓縮後文字無法選取/搜尋</strong>,但檔案大小最可預測。寄信附檔、系統上傳最合適。'
+  };
+  const updateWarn = () => {
+    const mode = document.querySelector('input[name=mode]:checked').value;
+    $warn.innerHTML = WARN_MSG[mode];
+  };
+  document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', updateWarn));
+  updateWarn();
+
+  const $rowSize = document.getElementById('rowSize');
+  const $rowView = document.getElementById('rowView');
+  const $rowViewQuality = document.getElementById('rowViewQuality');
+  const $tgtHint = document.getElementById('tgtHint');
+  const TGT_HINT = {
+    size: '固定檔案大小上限,畫質自動調到剛好符合',
+    view: '固定顯示解析度,檔案大小隨內容決定;可另選畫質等級'
+  };
+  // 追蹤用戶是否手動點過壓縮方式 / 改過目標(改過就不被推薦覆蓋)
+  window.__userPickedMode = false;
+  window.__userPickedTarget = false;
+  document.querySelectorAll('input[name=mode]').forEach(r => {
+    r.addEventListener('click', () => { window.__userPickedMode = true; });
+  });
+  // 用戶手動改 target 後就不再覆蓋
+  setTimeout(() => {
+    const tgt = document.getElementById('target');
+    if (tgt) tgt.addEventListener('input', () => { window.__userPickedTarget = true; });
+  }, 0);
+
+  document.querySelectorAll('input[name=tgtType]').forEach(r => r.addEventListener('change', () => {
+    const t = document.querySelector('input[name=tgtType]:checked').value;
+    $rowSize.style.display = t === 'size' ? '' : 'none';
+    $rowView.style.display = t === 'view' ? '' : 'none';
+    $rowViewQuality.style.display = t === 'view' ? '' : 'none';
+    if ($tgtHint) $tgtHint.textContent = TGT_HINT[t] || '';
+  }));
+
+  const log = (msg) => {
+    $log.textContent += msg + '\n';
+    $log.scrollTop = $log.scrollHeight;
+  };
+  const clearLog = () => { $log.textContent = ''; };
+  const $mascotsEl = document.getElementById('mascots');
+  // 比賽:pipeline 進行時動物擺動往前(cap 在 96%),heartbeat 確保卡住也緩緩前進,
+  // 勝負只在 declareWinner()(最終檔案產出)時才揭曉。
+  let raceConfig = { sharkPhase: 0, sharkFreq: 0.12, dinoPhase: Math.PI, dinoFreq: 0.1, amp: 15 };
+  let raceWinner = null;
+  let progressBase = 0, progressRange = 100;
+  let phaseLocalCeil = 95;        // heartbeat 在當前 phase 的漸近上限(local %)
+  let displayedProgress = 0;      // 0-100 全域,race 期間 monotonic(只進不退)
+  let heartbeatTimer = null;
+
+  function setProgressPhase(base, range, localCeil = 95) {
+    progressBase = Math.max(0, Math.min(100, base));
+    progressRange = Math.max(0, Math.min(100 - progressBase, range));
+    phaseLocalCeil = localCeil;
+  }
+  function resetRace() {
+    progressBase = 0;
+    progressRange = 100;
+    phaseLocalCeil = 95;
+    displayedProgress = 0;
+    raceWinner = null;
+    $mascotsEl.classList.remove('shark-won', 'dino-won', 'creeping');
+    stopHeartbeat();
+  }
+  function startRace() {
+    // 每次 attempt 重置:phase 回到全段、顯示回 0、prepare heartbeat
+    progressBase = 0;
+    progressRange = 100;
+    phaseLocalCeil = 95;
+    displayedProgress = 0;
+    raceWinner = null;
+    $mascotsEl.classList.remove('shark-won', 'dino-won', 'creeping');
+    raceConfig = {
+      sharkPhase: Math.random() * Math.PI * 2,
+      sharkFreq: 0.09 + Math.random() * 0.08,
+      dinoPhase: Math.random() * Math.PI * 2,
+      dinoFreq: 0.09 + Math.random() * 0.08,
+      amp: 12 + Math.random() * 8
+    };
+    internalSetProgress(0, true);
+    startHeartbeat();
+  }
+  function internalSetProgress(overall, force = false) {
+    let clamped = Math.max(0, Math.min(100, overall));
+    // ratchet:race 期間只進不退(force 時例外,給 startRace / declareWinner 用)
+    if (!force && clamped < displayedProgress) clamped = displayedProgress;
+    displayedProgress = clamped;
+    $mascotsEl.style.setProperty('--progress', clamped.toFixed(1));
+    const done = clamped >= 99.9;
+    const decay = Math.max(0.15, Math.pow(1 - clamped / 100, 1.2));
+    const sOff = Math.sin(clamped * raceConfig.sharkFreq + raceConfig.sharkPhase) * raceConfig.amp * decay;
+    const dOff = Math.sin(clamped * raceConfig.dinoFreq + raceConfig.dinoPhase) * raceConfig.amp * decay;
+    const sp = done ? 100 : Math.max(0, Math.min(96, clamped + sOff));
+    const dp = done ? 100 : Math.max(0, Math.min(96, clamped + dOff));
+    $mascotsEl.style.setProperty('--shark-pos', sp.toFixed(1));
+    $mascotsEl.style.setProperty('--dino-pos', dp.toFixed(1));
+    // 同步計算 translate px(transition 用 translate 走 compositor thread)
+    updateMascotTx(sp, dp);
+  }
+  // track:從 6px 起(idle 位置)到 W*0.92-13px(右邊留 13px 給圖示寬)
+  function updateMascotTx(sp, dp) {
+    const W = $mascotsEl.clientWidth || 600;
+    const start = 6;
+    const end = W * 0.92 - 13;
+    const sharkPx = start + (sp / 100) * (end - start);
+    const dinoPx  = start + (dp / 100) * (end - start);
+    $mascotsEl.style.setProperty('--shark-tx', sharkPx.toFixed(1) + 'px');
+    $mascotsEl.style.setProperty('--dino-tx',  dinoPx.toFixed(1) + 'px');
+  }
+  const setProgress = (localPct) => {
+    const lp = Math.max(0, Math.min(100, localPct));
+    internalSetProgress(progressBase + lp * progressRange / 100);
+  };
+  const resetProgress = () => setProgress(0);
+
+  // Heartbeat:即使沒有 tick,每 220ms 往當前 phase 的漸近上限爬一小步
+  function startHeartbeat() {
+    if (heartbeatTimer) return;
+    heartbeatTimer = setInterval(() => {
+      if (progressRange <= 0) return;
+      const currLocal = (displayedProgress - progressBase) / progressRange * 100;
+      if (currLocal >= phaseLocalCeil - 0.2) return; // 已逼近上限,停
+      // 指數逼近:距離愈近爬愈慢,但保底 0.08%
+      const delta = Math.max(0.08, (phaseLocalCeil - currLocal) * 0.045);
+      setProgress(currLocal + delta);
+    }, 220);
+  }
+  function stopHeartbeat() {
+    if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+  }
+
+  // 進 save() 前呼叫:把 translate transition 拉長,compositor 持續插值到 95% — JS block 時 CSS 照跑
+  // 必要條件:呼叫者要 await waitForCompositorCommit() 再進 save,讓瀏覽器把 transition 丟給 compositor
+  function creepToFinish() {
+    stopHeartbeat();
+    const curShark = parseFloat($mascotsEl.style.getPropertyValue('--shark-pos')) || displayedProgress;
+    const curDino  = parseFloat($mascotsEl.style.getPropertyValue('--dino-pos'))  || displayedProgress;
+    const dist = Math.max(1, 95 - Math.min(curShark, curDino));
+    const durSec = Math.max(5, Math.min(25, dist / 1.5));
+    $mascotsEl.style.setProperty('--creep-duration', durSec + 's');
+    $mascotsEl.classList.add('creeping');
+    displayedProgress = 95;
+    $mascotsEl.style.setProperty('--progress', '95');
+    $mascotsEl.style.setProperty('--shark-pos', '95');
+    $mascotsEl.style.setProperty('--dino-pos', '95');
+    updateMascotTx(95, 95);
+  }
+  // 等 2 個 animation frame:第 1 個做 style resolve,第 2 個把 transition commit 到 compositor。
+  // 沒等的話,接下來的 CPU-bound 工作會 block 主線程,compositor 拿不到 transition 描述,動物就卡住。
+  function waitForCompositorCommit() {
+    return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  }
+
+  // 最終檔案產出後呼叫:停 heartbeat、移除 creeping、強制 100、隨機抽 winner
+  function declareWinner() {
+    stopHeartbeat();
+    $mascotsEl.classList.remove('creeping');
+    progressBase = 0;
+    progressRange = 100;
+    // snap 到 100(不走 sine)— 在 creeping 移除後同步 translate 到 100%
+    displayedProgress = 100;
+    $mascotsEl.style.setProperty('--progress', '100');
+    $mascotsEl.style.setProperty('--shark-pos', '100');
+    $mascotsEl.style.setProperty('--dino-pos', '100');
+    updateMascotTx(100, 100);
+    if (!raceWinner) {
+      const sFinal = Math.sin(100 * raceConfig.sharkFreq + raceConfig.sharkPhase);
+      const dFinal = Math.sin(100 * raceConfig.dinoFreq + raceConfig.dinoPhase);
+      // 若兩邊 sine 差距太小 → 擲硬幣
+      const winner = Math.abs(sFinal - dFinal) < 0.15
+        ? (Math.random() < 0.5 ? 'shark' : 'dino')
+        : (sFinal > dFinal ? 'shark' : 'dino');
+      raceWinner = winner;
+      $mascotsEl.classList.add(winner + '-won');
+    }
+  }
+  const fmtMB = (bytes) => (bytes / 1024 / 1024).toFixed(2) + ' MB';
+
+  async function analyzePdf(file) {
+    const buf = await file.arrayBuffer();
+    const doc = await PDFLib.PDFDocument.load(buf, { updateMetadata: false });
+    const { PDFName, PDFRawStream } = PDFLib;
+    const N = (n) => PDFName.of(n);
+
+    // 先蒐集 SMask/Mask target refs
+    const maskTargetRefs = new Set();
+    doc.context.enumerateIndirectObjects().forEach(([_r, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      for (const k of ['SMask', 'Mask']) {
+        const v = obj.dict.get(N(k));
+        if (v instanceof PDFLib.PDFRef) maskTargetRefs.add(refKey(v));
+      }
+    });
+
+    // Tier A:可有損壓(JPEG/Flate 普通 image)
+    // Tier B:可無損重壓(Flate mask/1-bit/ImageMask — pako level 9)
+    // Tier C:完全不行(CCITTFax/JBIG2/LZW/DCT mask)
+    let aBytes = 0, aCount = 0, jpegBytes = 0, flateBytes = 0;
+    let bBytes = 0, bCount = 0;
+    let cBytes = 0, cCount = 0;
+    let totalImgBytes = 0;
+
+    doc.context.enumerateIndirectObjects().forEach(([ref, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const dict = obj.dict;
+      const subtype = dict.get(N('Subtype'));
+      const subStr = subtype && (subtype.encodedName || subtype.toString());
+      if (subStr !== '/Image') return;
+      const len = obj.contents.length;
+      totalImgBytes += len;
+
+      const filter = dict.get(N('Filter'));
+      const filterType = imageFilterType(filter);
+      const hasMask = dict.get(N('SMask')) || dict.get(N('Mask'));
+      const isMaskTarget = maskTargetRefs.has(refKey(ref));
+      const imgMask = dict.get(N('ImageMask'));
+      const isImgMask = imgMask && (imgMask.value === true || imgMask.encodedName === '/true');
+      const bpc = dict.get(N('BitsPerComponent'))?.asNumber?.() || 8;
+
+      const isProtected = hasMask || isMaskTarget || isImgMask;
+
+      if (filterType === 'DCTDecode' && !isProtected) {
+        aBytes += len; aCount++; jpegBytes += len;
+      } else if (filterType === 'FlateDecode' && !isProtected && bpc === 8) {
+        aBytes += len; aCount++; flateBytes += len;
+      } else if (filterType === 'FlateDecode') {
+        // Flate 但受保護 / 1-bit / ImageMask → Tier B(無損重壓)
+        bBytes += len; bCount++;
+      } else {
+        // CCITTFax / JBIG2 / LZW / DCT mask → Tier C
+        cBytes += len; cCount++;
+      }
+    });
+
+    return {
+      totalBytes: file.size,
+      aBytes, aCount, jpegBytes, flateBytes,
+      bBytes, bCount,
+      cBytes, cCount,
+      totalImgBytes,
+      textOtherBytes: Math.max(0, file.size - totalImgBytes),
+      pageCount: doc.getPageCount()
+    };
+  }
+
+  // 把估算容量四捨五入成 user-friendly 整數
+  function roundToFriendlyMB(mb) {
+    if (mb < 4.5) return Math.max(1, Math.round(mb));         // 1, 2, 3, 4
+    if (mb < 9.5) return 5;                                    // 5
+    if (mb < 95) return Math.ceil(mb / 10) * 10;               // 10, 20, 30, ... 90
+    if (mb < 480) return Math.ceil(mb / 50) * 50;              // 100, 150, 200, ...
+    return Math.ceil(mb / 100) * 100;                          // 500, 600, ...
+  }
+
+  // 估「保留文字層 + 高品質賽馬」可達到的最小檔案大小
+  function estimatePreserveTargetMB(a) {
+    // A(JPEG/Flate 可壓):賽馬 + MozJPEG 高品質 q≈0.82,平均壓到 30-40% 原大小
+    // B(無損 Flate 重壓):pako 9,壓到 ~75%
+    // C(不支援):原樣
+    // 文字/字體/其他:原樣 — 但 dedup + GC + Object Stream 能再省 5-15%
+    const aEst = a.aBytes * 0.35;
+    const bEst = a.bBytes * 0.75;
+    const cEst = a.cBytes;
+    const textEst = a.textOtherBytes * 0.88; // 結構優化省一點
+    const totalBytes = aEst + bEst + cEst + textEst;
+    return totalBytes / 1024 / 1024;
+  }
+
+  function showAnalysis(a) {
+    const total = a.totalBytes;
+    const aPct = total > 0 ? (a.aBytes / total) * 100 : 0;
+    const bPct = total > 0 ? (a.bBytes / total) * 100 : 0;
+    const cPct = total > 0 ? (a.cBytes / total) * 100 : 0;
+    const textPct = total > 0 ? (a.textOtherBytes / total) * 100 : 0;
+
+    // 估高品質 preserve 模式可達到的目標,加 15% 緩衝後 round 成漂亮整數
+    const estimatedMB = estimatePreserveTargetMB(a);
+    const recommendedMB = roundToFriendlyMB(estimatedMB * 1.15);
+
+    $analysis.innerHTML = `
+      <div><strong>${a.pageCount} 頁 · A ${a.aCount} 張(可壓)+ B ${a.bCount} 張(無損重壓)+ C ${a.cCount} 張(不支援)</strong></div>
+      <div class="bar">
+        <div class="jpeg" style="width:${aPct.toFixed(1)}%" title="A 可壓"></div>
+        <div class="other" style="width:${bPct.toFixed(1)}%;background:#fbbf24" title="B 無損重壓"></div>
+        <div class="other" style="width:${cPct.toFixed(1)}%;background:#ef4444" title="C 不支援"></div>
+        <div class="other" style="width:${textPct.toFixed(1)}%" title="文字等"></div>
+      </div>
+      <div class="breakdown">
+        <div>🖼 <strong>A 可壓影像:${fmtMB(a.aBytes)}</strong>(${aPct.toFixed(0)}%)= JPEG ${fmtMB(a.jpegBytes)} + PNG-like ${fmtMB(a.flateBytes)}</div>
+        <div>🎭 <strong>B 遮罩 Flate(無損重壓):${fmtMB(a.bBytes)}</strong>(${bPct.toFixed(0)}%)— SMask/Mask/1-bit/ImageMask,會用 zlib 9 再壓一次</div>
+        <div>🚫 <strong>C 不支援(保留):${fmtMB(a.cBytes)}</strong>(${cPct.toFixed(0)}%)— CCITTFax/JBIG2/LZW 等,目前只能原樣留著</div>
+        <div>📄 <strong>真文字/字體/向量/其他:${fmtMB(a.textOtherBytes)}</strong>(${textPct.toFixed(0)}%)</div>
+        <div style="color:var(--text-3);margin-top:6px">💡 <strong>建議:保留文字層 + 目標 ${recommendedMB} MB</strong>(估計可達到的最小高品質檔案大小,已自動填入)</div>
+      </div>
+    `;
+    $analysis.style.display = 'block';
+    // 強制 preserve mode + 自動填入推薦值(用戶手動改過後仍尊重)
+    if (!window.__userPickedMode) {
+      const rb = document.querySelector(`input[name=mode][value=preserve]`);
+      if (rb) rb.checked = true;
+    }
+    if (!window.__userPickedTarget) {
+      // 切到 size 模式 + 填值
+      const sizeRadio = document.querySelector('input[name=tgtType][value=size]');
+      if (sizeRadio) {
+        sizeRadio.checked = true;
+        sizeRadio.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      const targetEl = document.getElementById('target');
+      if (targetEl) targetEl.value = recommendedMB;
+    }
+  }
+
+  const setFile = async (f) => {
+    if (!f || f.type !== 'application/pdf') {
+      $fileInfo.textContent = '請選 PDF 檔';
+      return;
+    }
+    currentFile = f;
+    $fileInfo.textContent = `已選:${f.name}(${fmtMB(f.size)})`;
+    $go.disabled = false;
+    $download.style.display = 'none';
+    clearLog();
+    $analysis.style.display = 'none';
+    try {
+      const a = await analyzePdf(f);
+      showAnalysis(a);
+    } catch (err) {
+      console.warn('analyze failed:', err);
+    }
+  };
+
+  $file.addEventListener('change', (e) => setFile(e.target.files[0]));
+  ['dragenter', 'dragover'].forEach(ev =>
+    $drop.addEventListener(ev, (e) => { e.preventDefault(); $drop.classList.add('hover'); }));
+  ['dragleave', 'drop'].forEach(ev =>
+    $drop.addEventListener(ev, (e) => { e.preventDefault(); $drop.classList.remove('hover'); }));
+  $drop.addEventListener('drop', (e) => {
+    const f = e.dataTransfer.files[0];
+    if (f) setFile(f);
+  });
+
+  // 整頁光柵化模式候選 [scale, jpegQuality]
+  const CANDIDATES_RASTER = [
+    [2.0, 0.90], [1.5, 0.85], [1.2, 0.80], [1.0, 0.75],
+    [0.85, 0.70], [0.7, 0.60], [0.55, 0.50], [0.4, 0.40],
+    [0.3, 0.30], [0.22, 0.25]
+  ];
+  // 保留文字層模式候選 [imageScale, jpegQuality] — scale 是 PDF 內圖片的像素縮放
+  const CANDIDATES_PRESERVE = [
+    [1.0, 0.90], [1.0, 0.80], [1.0, 0.70],
+    [0.85, 0.75], [0.75, 0.70], [0.6, 0.60],
+    [0.5, 0.50], [0.4, 0.45], [0.3, 0.35], [0.22, 0.30]
+  ];
+
+  async function renderPageEncoded(page, scale, quality, codec) {
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const encoded = await encodeCanvas(canvas, quality, codec);
+    const pxW = canvas.width, pxH = canvas.height;
+    canvas.width = canvas.height = 0;
+    return { ...encoded, width: viewport.width, height: viewport.height, pxW, pxH };
+  }
+
+  async function buildPdf(pages, scale, quality, onProgress, codec = 'jpeg') {
+    const outDoc = await PDFLib.PDFDocument.create();
+    // Phase 0-82%: 頁面渲染
+    setProgressPhase(0, 82);
+    const codecWins = new Map();
+    for (let i = 0; i < pages.length; i++) {
+      checkCancelled();
+      const enc = await renderPageEncoded(pages[i], scale, quality, codec);
+      const newPage = outDoc.addPage([enc.width, enc.height]);
+      if (enc.filter === 'JPXDecode') {
+        const imgRef = embedJpxImage(outDoc, enc.bytes, enc.pxW, enc.pxH);
+        drawJpxOnPage(newPage, imgRef, enc.width, enc.height, `Im${i}`);
+      } else {
+        const img = await outDoc.embedJpg(enc.bytes);
+        newPage.drawImage(img, { x: 0, y: 0, width: enc.width, height: enc.height });
+      }
+      const lbl = enc.label || (enc.filter === 'JPXDecode' ? 'jp2' : 'jpeg');
+      codecWins.set(lbl, (codecWins.get(lbl) || 0) + 1);
+      setProgress(((i + 1) / pages.length) * 100);
+      if (onProgress) onProgress(i + 1, pages.length);
+    }
+    if (codecWins.size > 0) {
+      const codecStats = Array.from(codecWins.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `${k}(${v})`).join(', ');
+      log(`Codec 賽馬贏家:${codecStats}`);
+    }
+    // save() 是 CPU-bound,用 CSS transition 讓動物在 compositor 繼續爬
+    creepToFinish();
+    await waitForCompositorCommit();
+    return await outDoc.save({ useObjectStreams: true });
+  }
+
+  // preserve 模式起點(scale 是 image downscale factor,≤ 1.0)
+  function pickStart(ratio) {
+    if (ratio >= 0.75) return [1.0, 0.88];
+    if (ratio >= 0.5)  return [0.95, 0.78];
+    if (ratio >= 0.3)  return [0.8, 0.65];
+    if (ratio >= 0.15) return [0.6, 0.5];
+    if (ratio >= 0.08) return [0.45, 0.4];
+    return [0.3, 0.32];
+  }
+
+  // raster 模式起點(scale 是 canvas 渲染倍率,1.0 = 頁面原尺寸 pt,1080p 約需 2.5-3.0)
+  function pickStartRaster(ratio, maxScale) {
+    let s, q;
+    if (ratio >= 0.5)       { s = maxScale;       q = 0.85; }
+    else if (ratio >= 0.25) { s = maxScale * 0.8; q = 0.75; }
+    else if (ratio >= 0.12) { s = maxScale * 0.6; q = 0.65; }
+    else if (ratio >= 0.06) { s = maxScale * 0.45; q = 0.55; }
+    else                    { s = maxScale * 0.3; q = 0.45; }
+    return [Math.max(0.5, s), q];
+  }
+
+  // preserve 模式起點 — 刻意激進,保證多數圖會被替換(否則模型失真)
+  function pickStartPreserve(ratio) {
+    if (ratio >= 0.85) return [0.95, 0.72];
+    if (ratio >= 0.65) return [0.85, 0.62];
+    if (ratio >= 0.4)  return [0.7, 0.55];
+    if (ratio >= 0.2)  return [0.5, 0.45];
+    if (ratio >= 0.1)  return [0.38, 0.38];
+    return [0.25, 0.3];
+  }
+
+  // 根據實際結果外推下一組參數,帶 5% 安全餘量
+  function refineParams(scale, quality, actualBytes, targetBytes, maxScale = 1.0, maxQuality = 0.95) {
+    const factor = Math.sqrt((targetBytes * 0.93) / actualBytes);
+    return [
+      Math.max(0.18, Math.min(maxScale, scale * factor)),
+      Math.max(0.22, Math.min(maxQuality, quality * factor))
+    ];
+  }
+
+  async function shrinkRaster(file, targetBytes, codec) {
+    log(`模式:最大壓縮(整頁光柵化) · 編碼:Smart`);
+    log(`讀取 PDF ...`);
+    const buf = await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+    log(`頁數:${doc.numPages}`);
+    const pages = [];
+    for (let i = 1; i <= doc.numPages; i++) pages.push(await doc.getPage(i));
+
+    // 算出合理的 MAX scale:1080p(1920px 寬)基準,cap 在 3.5
+    let pageMaxPt = 0;
+    for (const p of pages) {
+      const vp = p.getViewport({ scale: 1 });
+      pageMaxPt = Math.max(pageMaxPt, vp.width, vp.height);
+    }
+    const MAX_SCALE = pageMaxPt > 0 ? Math.min(3.5, 1920 / pageMaxPt) : 3.0;
+    log(`\n頁面最長邊 ${Math.round(pageMaxPt)}pt,1080p 基準 MAX scale ≈ ${MAX_SCALE.toFixed(2)}`);
+
+    const ratio = targetBytes / file.size;
+    let [scale, quality] = pickStartRaster(ratio, MAX_SCALE);
+    log(`目標比例 ${(ratio * 100).toFixed(1)}%,起點 scale=${scale.toFixed(2)} quality=${quality.toFixed(2)}`);
+
+    const MAX_TRIES = 5;
+    const history = [];
+    let lastBytes = null;
+    const rasterBuildFn = (s, q) => buildPdf(pages, s, q, (n, total) => {
+      const lines = $log.textContent.split('\n');
+      lines[lines.length - 1] = `  渲染 ${n}/${total}`;
+      $log.textContent = lines.join('\n');
+      $log.scrollTop = $log.scrollHeight;
+    }, codec);
+
+    for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+      log(`\n[第 ${attempt} 次] scale=${scale.toFixed(2)} quality=${quality.toFixed(2)}`);
+      startRace();
+      const bytes = await rasterBuildFn(scale, quality);
+      log(`  → ${fmtMB(bytes.length)}`);
+      if (bytes.length <= targetBytes) {
+        let best = { scale, quality, r: compressRatioOf(scale, quality), bytes };
+        best = await tryUpQuality(rasterBuildFn, best, targetBytes, history[history.length - 1], MAX_SCALE, 0.95);
+        log(`\n✓ 達標!最終 ${fmtMB(best.bytes.length)} @ scale=${best.scale.toFixed(2)} quality=${best.quality.toFixed(2)}`);
+        return best.bytes;
+      }
+      lastBytes = bytes;
+      history.push({ scale, quality, r: compressRatioOf(scale, quality), bytes: bytes.length });
+      [scale, quality] = refineParams(scale, quality, bytes.length, targetBytes, MAX_SCALE, 0.95);
+    }
+    throw new Error(`試 ${MAX_TRIES} 次仍未達標,最後 ${fmtMB(lastBytes.length)}。請提高目標或減頁。`);
+  }
+
+  const MAX_CANVAS_DIM = 8192; // 保守 cap,避免瀏覽器 OOM
+
+  // 把原始 bytes + dict 解出 canvas(支援 JPEG / Flate / 降級)
+  async function imageToCanvas(origBytes, dict, filterType, targetScale, pdfCtx) {
+    let width = 0, height = 0, srcCanvas = null;
+
+    if (filterType === 'DCTDecode') {
+      const blob = new Blob([origBytes], { type: 'image/jpeg' });
+      const img = await createImageBitmap(blob).catch(() => null);
+      if (!img) return null;
+      width = img.width; height = img.height;
+      srcCanvas = img;
+    } else if (filterType === 'FlateDecode') {
+      const decoded = decodeFlateImage(origBytes, dict, pdfCtx);
+      if (!decoded) return null;
+      width = decoded.width; height = decoded.height;
+      const c = document.createElement('canvas');
+      c.width = width; c.height = height;
+      c.getContext('2d').putImageData(decoded.imgData, 0, 0);
+      srcCanvas = c;
+    } else {
+      return null;
+    }
+
+    // 計算目標尺寸 + Canvas 上限保護
+    let newW = Math.max(1, Math.floor(width * targetScale));
+    let newH = Math.max(1, Math.floor(height * targetScale));
+    if (newW > MAX_CANVAS_DIM || newH > MAX_CANVAS_DIM) {
+      const cap = MAX_CANVAS_DIM / Math.max(newW, newH);
+      newW = Math.max(1, Math.floor(newW * cap));
+      newH = Math.max(1, Math.floor(newH * cap));
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = newW; canvas.height = newH;
+    const canvasCtx = canvas.getContext('2d');
+    canvasCtx.fillStyle = 'white';
+    canvasCtx.fillRect(0, 0, newW, newH);
+    canvasCtx.drawImage(srcCanvas, 0, 0, newW, newH);
+
+    if (srcCanvas.close) srcCanvas.close();
+    else if (srcCanvas.width !== undefined) { srcCanvas.width = 0; srcCanvas.height = 0; }
+
+    return canvas;
+  }
+
+  // Plate 偵測:抽樣算 RGB variance,低表示「均勻色塊」靠 SMask 切形狀
+  function isPlateImage(canvas) {
+    const w = canvas.width, h = canvas.height;
+    if (w * h === 0) return false;
+    const ctx = canvas.getContext('2d');
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const step = Math.max(1, Math.floor(w * h / 500));
+    let sR=0, sG=0, sB=0, s2R=0, s2G=0, s2B=0, n=0;
+    for (let i = 0; i < w*h; i += step) {
+      const r=data[i*4], g=data[i*4+1], b=data[i*4+2];
+      sR+=r; sG+=g; sB+=b;
+      s2R+=r*r; s2G+=g*g; s2B+=b*b;
+      n++;
+    }
+    if (n === 0) return false;
+    const vR = s2R/n - (sR/n)**2, vG = s2G/n - (sG/n)**2, vB = s2B/n - (sB/n)**2;
+    return Math.max(vR, vG, vB) < 600; // stddev < ~24
+  }
+
+  // codec: 'jpeg' | 'jpx' | 'smart'(實際永遠走 encodeCanvas 賽馬)
+  // returns { bytes, filter, label, plateScale? } | null
+  async function recompressImage(origBytes, scale, quality, codec, filterType = 'DCTDecode', dict = null, pdfCtx = null, hasMask = false) {
+    if (hasMask) {
+      // 有 SMask/Mask 的主圖:先 decode 全尺寸偵測 plate
+      const fullCanvas = await imageToCanvas(origBytes, dict, filterType, 1.0, pdfCtx);
+      if (!fullCanvas) return null;
+      const isPlate = isPlateImage(fullCanvas);
+      const w = fullCanvas.width, h = fullCanvas.height;
+      // 安全降版:plate 型走超壓,non-plate 型走「降尺寸 + 高 quality」(避免 alpha 邊緣 fringing)
+      // 用 OxiPNG 對小尺寸無損圖也能接,因為 PNG 不會像 JPEG 在邊緣產生噪點
+      const pScale = isPlate
+        ? Math.max(0.25, scale * 0.6)
+        : Math.max(0.5, scale); // non-plate 不能太狠,維持 ≥ 0.5
+      const pQuality = isPlate
+        ? Math.max(0.3, quality * 0.7)
+        : Math.max(0.85, quality * 1.3); // non-plate 提到 0.85+ 避免邊緣 fringing
+      const newW = Math.max(1, Math.floor(w * pScale));
+      const newH = Math.max(1, Math.floor(h * pScale));
+      const sc = document.createElement('canvas');
+      sc.width = newW; sc.height = newH;
+      sc.getContext('2d').drawImage(fullCanvas, 0, 0, newW, newH);
+      const encResult = await encodeCanvas(sc, pQuality, codec);
+      fullCanvas.width = fullCanvas.height = 0;
+      sc.width = sc.height = 0;
+      if (!encResult || !encResult.bytes) return null;
+      return { ...encResult, plateScale: pScale };
+    }
+
+    const canvas = await imageToCanvas(origBytes, dict, filterType, scale, pdfCtx);
+    if (!canvas) return null;
+    // Fovea #2:plate-like 偵測(均勻色塊 = 背景/裝飾,可激進壓)
+    // 只對中大型圖跑(小圖差距不明顯,避免抽樣不準)
+    let finalQuality = quality;
+    let plateDetected = false;
+    if (canvas.width >= 300 && canvas.height >= 300 && isPlateImage(canvas)) {
+      finalQuality = Math.max(0.3, quality * 0.7);
+      plateDetected = true;
+    }
+    const result = await encodeCanvas(canvas, finalQuality, codec);
+    canvas.width = 0; canvas.height = 0;
+    if (result && plateDetected) result.plateLike = true;
+    return result;
+  }
+
+  function getFilterNames(filter) {
+    if (!filter) return [];
+    const names = [];
+    if (filter.array) filter.array.forEach(n => names.push(n.encodedName || n.toString()));
+    else names.push(filter.encodedName || filter.toString());
+    return names.map(n => n && n.replace(/^\//, ''));
+  }
+
+  function imageFilterType(filter) {
+    const names = getFilterNames(filter);
+    if (!names.length) return null;
+    const last = names[names.length - 1];
+    if (last === 'DCTDecode' || last === 'DCT') return 'DCTDecode';
+    if (last === 'FlateDecode' || last === 'Fl') return 'FlateDecode';
+    return null;
+  }
+
+  async function collectImageStreams(pdfDoc) {
+    const { PDFName, PDFRawStream } = PDFLib;
+    // 先蒐集所有被當作 SMask/Mask 的 refs — 這些不能壓(會毀透明)
+    const maskTargetRefs = new Set();
+    pdfDoc.context.enumerateIndirectObjects().forEach(([_r, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const d = obj.dict;
+      const sm = d.get(PDFName.of('SMask'));
+      const m = d.get(PDFName.of('Mask'));
+      for (const v of [sm, m]) {
+        if (v && v.constructor && v.constructor.name === 'PDFRef') {
+          maskTargetRefs.add(refKey(v));
+        }
+      }
+    });
+
+    const items = [];
+    pdfDoc.context.enumerateIndirectObjects().forEach(([ref, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const dict = obj.dict;
+      const subtype = dict.get(PDFName.of('Subtype'));
+      const subStr = subtype && (subtype.encodedName || subtype.toString());
+      if (subStr !== '/Image') return;
+      const type = dict.get(PDFName.of('Type'));
+      const typeStr = type && (type.encodedName || type.toString());
+      if (typeStr && typeStr !== '/XObject') return;
+      const filter = dict.get(PDFName.of('Filter'));
+      const filterType = imageFilterType(filter);
+      if (!filterType) return;
+      // skip 被當 alpha 用的(是別人 SMask/Mask 的 target)
+      if (maskTargetRefs.has(refKey(ref))) return;
+      // skip ImageMask stencil mask
+      const imgMask = dict.get(PDFName.of('ImageMask'));
+      if (imgMask && (imgMask.value === true || imgMask.encodedName === '/true')) return;
+      // skip 有 Mask 是 Array(color key)— re-encode RGB 會讓 key 錯位
+      const mask = dict.get(PDFName.of('Mask'));
+      if (mask && mask.array) return;
+      // 有 SMask/Mask 的主圖:標記 hasMask,讓 recompressImage 走 plate 偵測分支
+      const smRef = dict.get(PDFName.of('SMask'));
+      const mkRef = dict.get(PDFName.of('Mask'));
+      const hasMask = (smRef instanceof PDFLib.PDFRef) || (mkRef instanceof PDFLib.PDFRef);
+      // SMask 帶 Matte 仍 skip(pre-multiplied alpha 不能重壓)
+      if (smRef instanceof PDFLib.PDFRef) {
+        try {
+          const smObj = pdfDoc.context.lookup(smRef);
+          if (smObj && smObj.dict && smObj.dict.get(PDFName.of('Matte'))) return;
+        } catch (_) {}
+      }
+      items.push({ ref, obj, dict, filterType, hasMask });
+    });
+    return items;
+  }
+
+  function applyImageReplacement(pdfDoc, ref, dict, origW, origH, scale, result) {
+    const N = (n) => PDFLib.PDFName.of(n);
+    const actualScale = result.plateScale || scale;
+    // OxiPNG 路徑:用 PNG 解析出來的真實尺寸,FlateDecode + Predictor 15
+    if (result.filter === 'FlateDecode-PNG' && result.pngMeta) {
+      const m = result.pngMeta;
+      dict.set(N('Width'), PDFLib.PDFNumber.of(m.width));
+      dict.set(N('Height'), PDFLib.PDFNumber.of(m.height));
+      dict.set(N('Filter'), N('FlateDecode'));
+      dict.set(N('ColorSpace'), N(m.colorspace));
+      dict.set(N('BitsPerComponent'), PDFLib.PDFNumber.of(m.bitDepth));
+      // DecodeParms 含 Predictor 15(自動選 PNG 五種 predictor)
+      const dp = pdfDoc.context.obj({
+        Predictor: 15,
+        Columns: m.width,
+        Colors: m.colors,
+        BitsPerComponent: m.bitDepth,
+      });
+      dict.set(N('DecodeParms'), dp);
+      pdfDoc.context.assign(ref, PDFLib.PDFRawStream.of(dict, result.bytes));
+      return;
+    }
+    // JPEG / JP2 路徑(原本邏輯)
+    if (origW > 0) dict.set(N('Width'), PDFLib.PDFNumber.of(Math.max(1, Math.floor(origW * actualScale))));
+    if (origH > 0) dict.set(N('Height'), PDFLib.PDFNumber.of(Math.max(1, Math.floor(origH * actualScale))));
+    dict.set(N('Filter'), N(result.filter));
+    try { dict.delete(N('DecodeParms')); } catch (_) {}
+    dict.set(N('ColorSpace'), N('DeviceRGB'));
+    dict.set(N('BitsPerComponent'), PDFLib.PDFNumber.of(8));
+    pdfDoc.context.assign(ref, PDFLib.PDFRawStream.of(dict, result.bytes));
+  }
+
+  function skipReasonOf(dict, filterType, hasMask) {
+    const N = (n) => PDFLib.PDFName.of(n);
+    const cs = dict.get(N('ColorSpace'));
+    const bpc = dict.get(N('BitsPerComponent'))?.asNumber?.() || 8;
+    let csKey = 'Unknown';
+    if (cs) {
+      if (cs.encodedName) csKey = cs.encodedName.replace(/^\//, '');
+      else if (cs.array) csKey = 'Array(' + (cs.get(0)?.encodedName?.replace(/^\//, '') || '?') + ')';
+    }
+    // 有 SMask 且 decode 不是 plate 型 → 保守不壓(避免毀透明)
+    if (hasMask) return '帶 SMask 非 plate 型(保守不壓)';
+    if (bpc !== 8) return `${bpc}-bit`;
+    if (csKey === 'Array(Indexed)') return 'Indexed 調色盤';
+    if (csKey === 'Array(ICCBased)') return 'ICCBased 色彩描述';
+    if (csKey.startsWith('Array')) return csKey;
+    return filterType === 'FlateDecode' ? `Flate+${csKey}` : csKey;
+  }
+
+  // 預處理:跑一次「跟 quality 無關」的工作 — dedup / GC / Form / ICC / Flate
+  // 回傳預處理後的 PDF bytes,後續所有 attempt 從這裡接續(省 4-10s 每次上探)
+  async function prepareDocumentBytes(origBuf, onLog) {
+    const log2 = (msg) => { if (onLog) onLog(msg); };
+    const pdfDoc = await PDFLib.PDFDocument.load(origBuf, { updateMetadata: false });
+    stripMetadata(pdfDoc);
+
+    setProgressPhase(0, 8);
+    log2('  影像去重中...');
+    const dup = await dedupImages(pdfDoc, (i, t) => setProgress((i / t) * 100));
+    log2(`  影像去重:合併 ${dup.count} 個重複,省 ${fmtMB(dup.saved)}`);
+
+    setProgressPhase(8, 4);
+    const formDup = await dedupFormXObjects(pdfDoc);
+    if (formDup.count > 0) log2(`  Form 積木去重:${formDup.count} 個,省 ${fmtMB(formDup.saved)}`);
+    const icc = await dedupICCProfiles(pdfDoc);
+    if (icc.count > 0) log2(`  ICC 色彩描述去重:${icc.count} 個,省 ${fmtMB(icc.saved)}`);
+
+    setProgressPhase(12, 8);
+    log2('  清理未引用物件中...');
+    const gc = await garbageCollect(pdfDoc, (i, t) => setProgress((i / t) * 100));
+    log2(`  清理未引用物件:${gc.count} 個,省 ${fmtMB(gc.saved)}`);
+
+    // 收 image refs(用於 skipRefs)
+    const items = await collectImageStreams(pdfDoc);
+    const skipRefs = new Set(items.map(x => refKey(x.ref)));
+
+    setProgressPhase(20, 12);
+    log2('  Flate 無損重壓中...');
+    const flateRe = await recompressFlateLossless(pdfDoc, skipRefs, (i, t) => setProgress((i / t) * 100));
+    log2(`  Flate 無損重壓:${flateRe.count} 個,省 ${fmtMB(flateRe.saved)}`);
+
+    setProgressPhase(32, 5);
+    log2('  保存預處理結果...');
+    const prepBytes = await pdfDoc.save({ useObjectStreams: true });
+    log2(`  預處理完成:${fmtMB(origBuf.byteLength || origBuf.length)} → ${fmtMB(prepBytes.length)}`);
+    return prepBytes;
+  }
+
+  async function buildPreservePdf(prepBytes, scale, quality, codec, verboseLog = false) {
+    const updateLogLine = (prefix) => {
+      const had = $log.textContent.endsWith('\n');
+      const lines = $log.textContent.split('\n');
+      if (had) lines.pop();
+      if (lines.length > 0) lines[lines.length - 1] = prefix;
+      else lines.push(prefix);
+      $log.textContent = lines.join('\n') + (had ? '\n' : '');
+      $log.scrollTop = $log.scrollHeight;
+    };
+    // 從預處理結果接續,跳過 dedup/GC/ICC/Flate(quality 無關)
+    const pdfDoc = await PDFLib.PDFDocument.load(prepBytes, { updateMetadata: false });
+    const items = await collectImageStreams(pdfDoc);
+    const skipRefs = new Set(items.map(x => refKey(x.ref)));
+
+    // Phase 0-12%: SMask downscale(quality-dependent)
+    setProgressPhase(0, 12);
+    const smaskScale = quality < 0.5 ? 0.45 : quality < 0.75 ? 0.6 : 0.75;
+    if (verboseLog) log(`  SMask 降解析度中(×${smaskScale})...`);
+    const sm = await downscaleSMasks(pdfDoc, smaskScale, (i, t) => {
+      if (verboseLog) updateLogLine(`  SMask 降解析度中... ${i}/${t}`);
+      setProgress((i / t) * 100);
+    });
+    if (verboseLog) updateLogLine(`  SMask 降解析度:${sm.count} 個,省 ${fmtMB(sm.saved)}`);
+
+    if (verboseLog) log(`  實際處理 ${items.length} 張(去重後 unique)`);
+
+    // 智慧分配:依像素數排名,boost 1.25(最大)→ 0.75(最小)
+    const itemDims = items.map((it, idx) => {
+      const w = it.dict.get(PDFLib.PDFName.of('Width'))?.asNumber?.() || 0;
+      const h = it.dict.get(PDFLib.PDFName.of('Height'))?.asNumber?.() || 0;
+      return { idx, pixels: w * h, w, h };
+    });
+    const ranked = itemDims.slice().sort((a, b) => b.pixels - a.pixels);
+    const rankByIdx = new Map();
+    for (let r = 0; r < ranked.length; r++) {
+      rankByIdx.set(ranked[r].idx, ranked.length === 1 ? 0 : r / (ranked.length - 1));
+    }
+
+    // Fovea 近似 #1:頁面 aspect ratio 用於偵測「跨頁背景圖」
+    // 圖的 AR 跟某頁 AR 相近 + 圖很大 → 多半是背景,可降畫質
+    const pages = pdfDoc.getPages();
+    const pageARs = pages.map(p => {
+      const w = p.getWidth(), h = p.getHeight();
+      return h > 0 ? w / h : 1;
+    });
+    const isPageBgLike = (w, h, rank) => {
+      if (rank > 0.3) return false; // 不是大圖就不算背景
+      if (h <= 0) return false;
+      const imgAR = w / h;
+      return pageARs.some(par => Math.abs(par - imgAR) / par < 0.15);
+    };
+
+    if (verboseLog && ranked.length > 1) {
+      const big = ranked[0], small = ranked[ranked.length - 1];
+      const bigQ = Math.max(0.3, Math.min(0.95, quality * 1.25));
+      const smallQ = Math.max(0.3, Math.min(0.95, quality * 0.75));
+      log(`  智慧分配:大圖 ${big.w}×${big.h} q≈${bigQ.toFixed(2)} → 小圖 ${small.w}×${small.h} q≈${smallQ.toFixed(2)}`);
+    }
+
+    // Phase 12-78%: recompress image main loop(大頭)
+    setProgressPhase(12, 66);
+    let shrunk = 0, skipped = 0;
+    let bgImageCount = 0;     // Fovea #1: 跨頁背景圖
+    let plateImageCount = 0;  // Fovea #2: 均勻色塊圖
+    const skipReasons = new Map();
+    const codecWins = new Map(); // codec winner stats
+    for (let i = 0; i < items.length; i++) {
+      if (i % 5 === 0) checkCancelled();
+      const { ref, obj, dict, filterType, hasMask } = items[i];
+      const orig = obj.contents;
+      const dim = itemDims[i];
+      // 智慧分配:rank 0=最大圖(1.25x boost),1=最小圖(0.75x)
+      const rank = rankByIdx.get(i) ?? 0.5;
+      const boost = 1.25 - rank * 0.5;
+      // Fovea #1:跨頁背景圖額外 0.85x(承讓給重點圖)
+      const bgPenalty = isPageBgLike(dim.w, dim.h, rank) ? 0.85 : 1.0;
+      if (bgPenalty < 1) bgImageCount++;
+      const perScale = Math.max(0.2, Math.min(1.0, scale * boost * bgPenalty));
+      const perQuality = Math.max(0.3, Math.min(0.95, quality * boost * bgPenalty));
+      // Fovea #2:plate-like 偵測由 recompressImage 內部處理,給個 hint
+      const result = await recompressImage(orig, perScale, perQuality, codec, filterType, dict, pdfDoc.context, !!hasMask);
+      if (!result) {
+        skipped++;
+        const reason = skipReasonOf(dict, filterType, hasMask);
+        skipReasons.set(reason, (skipReasons.get(reason) || 0) + 1);
+      }
+      else if (result.bytes.length < orig.length) {
+        const widthObj = dict.get(PDFLib.PDFName.of('Width'));
+        const heightObj = dict.get(PDFLib.PDFName.of('Height'));
+        const origW = widthObj && widthObj.asNumber ? widthObj.asNumber() : 0;
+        const origH = heightObj && heightObj.asNumber ? heightObj.asNumber() : 0;
+        applyImageReplacement(pdfDoc, ref, dict, origW, origH, perScale, result);
+        shrunk++;
+        const lbl = result.label || 'unknown';
+        codecWins.set(lbl, (codecWins.get(lbl) || 0) + 1);
+        if (result.plateLike) plateImageCount++;
+      }
+      setProgress(((i + 1) / items.length) * 100);
+      if ((i + 1) % 20 === 0 || i === items.length - 1) {
+        const lines = $log.textContent.split('\n');
+        lines[lines.length - 1] = `  處理影像 ${i + 1}/${items.length}(縮 ${shrunk}、略 ${skipped})`;
+        $log.textContent = lines.join('\n');
+        $log.scrollTop = $log.scrollHeight;
+      }
+    }
+    // Codec 統計每次都印(包含上探迭代),用簡短一行格式
+    {
+      const labelMap = { jp2: 'JP2', mozjpeg: 'Moz', oxipng: 'Oxi', 'canvas-jpg': 'cvs' };
+      const allLabels = ['jp2', 'mozjpeg', 'oxipng', 'canvas-jpg'];
+      const parts = allLabels.map(k => `${labelMap[k]}=${codecWins.get(k) || 0}`).filter((_, i) => (codecWins.get(allLabels[i]) || 0) > 0);
+      const totalWins = Array.from(codecWins.values()).reduce((a, b) => a + b, 0);
+      log(`  Codec:${parts.join(' · ')} | 動 ${totalWins}、未動 ${skipped}`);
+      // Fovea 統計
+      if (bgImageCount > 0 || plateImageCount > 0) {
+        log(`  Fovea:跨頁背景圖 ${bgImageCount} 張、均勻色塊圖 ${plateImageCount} 張(額外加重壓)`);
+      }
+    }
+    if (verboseLog && skipped > 0) {
+      const top = Array.from(skipReasons.entries()).sort((a,b) => b[1]-a[1]).slice(0, 6);
+      log(`  未動分類:${top.map(([k,v]) => `${k}(${v})`).join(', ')}`);
+    }
+    if (verboseLog) {
+      const dangling = validateMaskRefs(pdfDoc);
+      if (dangling > 0) log(`  ⚠ 警告:${dangling} 個 SMask/Mask ref 懸空(可能出現灰底)`);
+    }
+    // save() 是 CPU-bound,用 CSS transition 讓動物在 compositor 繼續爬
+    creepToFinish();
+    await waitForCompositorCommit();
+    return await pdfDoc.save({ useObjectStreams: true });
+  }
+
+  // ==== 多版本探測 + 揹包問題拼合 ====
+  // 跑一個 setpoint(scale, quality)取得每張圖的 candidate(不 save、不改原 PDF)
+  async function buildPreservePdfProbe(prepBytes, scale, quality, codec, verboseLog) {
+    const updateLogLine = (prefix) => {
+      const had = $log.textContent.endsWith('\n');
+      const lines = $log.textContent.split('\n');
+      if (had) lines.pop();
+      if (lines.length > 0) lines[lines.length - 1] = prefix;
+      else lines.push(prefix);
+      $log.textContent = lines.join('\n') + (had ? '\n' : '');
+      $log.scrollTop = $log.scrollHeight;
+    };
+    const pdfDoc = await PDFLib.PDFDocument.load(prepBytes, { updateMetadata: false });
+    const items = await collectImageStreams(pdfDoc);
+
+    setProgressPhase(0, 8);
+    const smaskScale = quality < 0.5 ? 0.45 : quality < 0.75 ? 0.6 : 0.75;
+    if (verboseLog) log(`  SMask scale=${smaskScale}`);
+    await downscaleSMasks(pdfDoc, smaskScale, (i, t) => setProgress((i / t) * 100));
+
+    // 分配 / Fovea 計算
+    const itemDims = items.map((it, idx) => {
+      const w = it.dict.get(PDFLib.PDFName.of('Width'))?.asNumber?.() || 0;
+      const h = it.dict.get(PDFLib.PDFName.of('Height'))?.asNumber?.() || 0;
+      return { idx, pixels: w * h, w, h };
+    });
+    const ranked = itemDims.slice().sort((a, b) => b.pixels - a.pixels);
+    const rankByIdx = new Map();
+    for (let r = 0; r < ranked.length; r++) {
+      rankByIdx.set(ranked[r].idx, ranked.length === 1 ? 0 : r / (ranked.length - 1));
+    }
+    const pages = pdfDoc.getPages();
+    const pageARs = pages.map(p => { const w = p.getWidth(), h = p.getHeight(); return h > 0 ? w / h : 1; });
+    const isPageBgLike = (w, h, rank) => {
+      if (rank > 0.3 || h <= 0) return false;
+      return pageARs.some(par => Math.abs(par - w/h) / par < 0.15);
+    };
+
+    setProgressPhase(8, 80);
+    const candidates = new Array(items.length).fill(null);
+    const codecWins = new Map();
+    let bgCount = 0, plateCount = 0;
+    for (let i = 0; i < items.length; i++) {
+      if (i % 5 === 0) checkCancelled();
+      const { obj, dict, filterType, hasMask } = items[i];
+      const orig = obj.contents;
+      const dim = itemDims[i];
+      const rank = rankByIdx.get(i) ?? 0.5;
+      const boost = 1.25 - rank * 0.5;
+      const bgPenalty = isPageBgLike(dim.w, dim.h, rank) ? 0.85 : 1.0;
+      if (bgPenalty < 1) bgCount++;
+      const perScale = Math.max(0.2, Math.min(1.0, scale * boost * bgPenalty));
+      const perQuality = Math.max(0.3, Math.min(0.95, quality * boost * bgPenalty));
+      const result = await recompressImage(orig, perScale, perQuality, codec, filterType, dict, pdfDoc.context, !!hasMask);
+      if (result && result.bytes.length < orig.length) {
+        candidates[i] = { ...result, perScale, origLen: orig.length };
+        codecWins.set(result.label || '?', (codecWins.get(result.label || '?') || 0) + 1);
+        if (result.plateLike) plateCount++;
+      }
+      setProgress(((i + 1) / items.length) * 100);
+      if ((i + 1) % 20 === 0 || i === items.length - 1) {
+        updateLogLine(`  探測 ${i + 1}/${items.length}`);
+      }
+    }
+    if (verboseLog) {
+      const labelMap = { jp2: 'JP2', mozjpeg: 'Moz', oxipng: 'Oxi', 'canvas-jpg': 'cvs' };
+      const parts = ['jp2', 'mozjpeg', 'oxipng', 'canvas-jpg'].map(k => `${labelMap[k]}=${codecWins.get(k) || 0}`).filter((_, i) => (codecWins.get(['jp2','mozjpeg','oxipng','canvas-jpg'][i]) || 0) > 0);
+      const wins = candidates.filter(c => c).length;
+      const sumBytes = candidates.reduce((s, c) => s + (c ? c.bytes.length : 0), 0);
+      log(`  Codec:${parts.join(' · ')} | 圖片總 ${fmtMB(sumBytes)}、可動 ${wins}/${items.length}`);
+      if (bgCount || plateCount) log(`  Fovea:背景圖 ${bgCount}、色塊 ${plateCount}`);
+    }
+    return { items, candidates, itemDims, rankByIdx, isPageBgLike, smaskScale };
+  }
+
+  // 揹包:每張圖選最佳版本,在 budget 下最大化「品質×重要性」
+  function knapsackPickChoices(setpoints, probeResults, items, prepBytesLen, targetBytes, log2) {
+    const N = items.length;
+    const numV = setpoints.length;
+    // 估 PDF overhead = prepBytes - sum(原 image bytes)
+    const origImageBytes = items.reduce((s, it) => s + it.obj.contents.length, 0);
+    const overhead = Math.max(0, prepBytesLen - origImageBytes) + 20 * 1024; // +20K 緩衝
+    const budget = targetBytes - overhead;
+
+    // choices[i] = setpoint index(0..numV-1)| -1 表示維持原圖
+    const choices = new Array(N).fill(-1);
+    let used = 0;
+
+    // 初始化:每張圖選「最便宜的可用版本」(通常是 setpoint 0 LOW)
+    for (let i = 0; i < N; i++) {
+      let cheapest = -1, cheapestSize = items[i].obj.contents.length;
+      for (let v = 0; v < numV; v++) {
+        const cand = probeResults[v].candidates[i];
+        if (cand && cand.bytes.length < cheapestSize) {
+          cheapest = v;
+          cheapestSize = cand.bytes.length;
+        }
+      }
+      if (cheapest >= 0) {
+        choices[i] = cheapest;
+        used += cheapestSize;
+      } else {
+        used += items[i].obj.contents.length; // 維持原圖
+      }
+    }
+
+    if (log2) log2(`  初始拼合(全選最小):${fmtMB(used)} / 預算 ${fmtMB(budget)}`);
+
+    // Greedy 升級:重複找「品質單位/byte 比最高」的升級,套上去直到爆預算
+    const dimRanked = items.map((_, i) => i).sort((a, b) => {
+      const da = items[a].dict.get(PDFLib.PDFName.of('Width'))?.asNumber?.() || 0;
+      const db = items[b].dict.get(PDFLib.PDFName.of('Width'))?.asNumber?.() || 0;
+      return db - da;
+    });
+    const rankMap = new Map();
+    for (let r = 0; r < dimRanked.length; r++) rankMap.set(dimRanked[r], r / Math.max(1, dimRanked.length - 1));
+
+    const importanceOf = (i) => {
+      const rank = rankMap.get(i) ?? 0.5;
+      return 1.5 - rank; // 1.5(最大圖)→ 0.5(最小圖)
+    };
+
+    let upgradeRounds = 0;
+    while (true) {
+      upgradeRounds++;
+      let bestIdx = -1, bestRatio = 0, bestCost = 0, bestNext = -1;
+      for (let i = 0; i < N; i++) {
+        const cur = choices[i];
+        if (cur === numV - 1) continue;
+        // 找下一個更高品質的可用版本(setpoint 0 = LOW、1 = HIGH、2 = MID — 順序在 setpoints 定義)
+        let nextV = -1, nextSize = Infinity;
+        const curSize = cur >= 0 ? probeResults[cur].candidates[i].bytes.length : items[i].obj.contents.length;
+        const curQ = cur >= 0 ? setpoints[cur].quality : 0;
+        for (let v = 0; v < numV; v++) {
+          if (v === cur) continue;
+          const cand = probeResults[v].candidates[i];
+          if (!cand) continue;
+          const candQ = setpoints[v].quality;
+          if (candQ <= curQ) continue; // 不算升級
+          if (cand.bytes.length <= nextSize) {
+            // 同 quality 下選較小;quality 高優先
+            if (cand.bytes.length < nextSize || candQ > (nextV >= 0 ? setpoints[nextV].quality : 0)) {
+              nextV = v;
+              nextSize = cand.bytes.length;
+            }
+          }
+        }
+        if (nextV < 0) continue;
+        const cost = nextSize - curSize;
+        if (cost <= 0) {
+          // 免費升級(高品質還比較小)→ 立刻取
+          choices[i] = nextV;
+          used += cost;
+          continue;
+        }
+        if (used + cost > budget) continue;
+        const qDiff = setpoints[nextV].quality - curQ;
+        const score = qDiff * importanceOf(i);
+        const ratio = score / cost;
+        if (ratio > bestRatio) {
+          bestRatio = ratio; bestIdx = i; bestCost = cost; bestNext = nextV;
+        }
+      }
+      if (bestIdx < 0) break;
+      choices[bestIdx] = bestNext;
+      used += bestCost;
+      if (upgradeRounds > 5000) break; // safety
+    }
+    if (log2) log2(`  Greedy 升級 ${upgradeRounds} 輪 → 最終拼合 ${fmtMB(used)}`);
+
+    return { choices, estimatedTotal: used };
+  }
+
+  // 拼合:用揹包選擇,套用到 PDF 並 save
+  async function assembleFinalPdf(prepBytes, setpoints, probeResults, choices, verboseLog) {
+    const pdfDoc = await PDFLib.PDFDocument.load(prepBytes, { updateMetadata: false });
+    const items = await collectImageStreams(pdfDoc);
+    // SMask:用 MID setpoint(中間值)的 smaskScale,當作折衷
+    const midSp = setpoints.reduce((acc, sp) => acc.quality < sp.quality ? acc : sp); // 找最低 quality
+    // 其實取「中間」更好,但簡單先用最高 quality 的 smaskScale(細緻)
+    const highSp = setpoints.reduce((acc, sp) => acc.quality > sp.quality ? acc : sp);
+    const useQ = highSp.quality;
+    const smaskScale = useQ < 0.5 ? 0.45 : useQ < 0.75 ? 0.6 : 0.75;
+    if (verboseLog) log(`  SMask 降解析度(用最高 quality 設定)scale=${smaskScale}...`);
+    setProgressPhase(0, 10);
+    await downscaleSMasks(pdfDoc, smaskScale, (i, t) => setProgress((i / t) * 100));
+
+    setProgressPhase(10, 70);
+    let applied = 0;
+    const pickedSetpoints = new Array(setpoints.length).fill(0);
+    for (let i = 0; i < items.length; i++) {
+      if (i % 10 === 0) checkCancelled();
+      const ch = choices[i];
+      if (ch < 0) continue;
+      const cand = probeResults[ch].candidates[i];
+      if (!cand) continue;
+      const { ref, dict } = items[i];
+      const widthObj = dict.get(PDFLib.PDFName.of('Width'));
+      const heightObj = dict.get(PDFLib.PDFName.of('Height'));
+      const origW = widthObj?.asNumber?.() || 0;
+      const origH = heightObj?.asNumber?.() || 0;
+      applyImageReplacement(pdfDoc, ref, dict, origW, origH, cand.perScale || setpoints[ch].scale, cand);
+      applied++;
+      pickedSetpoints[ch]++;
+      setProgress(((i + 1) / items.length) * 100);
+    }
+    if (verboseLog) {
+      const dist = setpoints.map((sp, i) => `${sp.label}(q=${sp.quality.toFixed(2)})${pickedSetpoints[i]}`).join(' · ');
+      log(`  拼合完成:套 ${applied} 張 → ${dist}`);
+    }
+    creepToFinish();
+    await waitForCompositorCommit();
+    return await pdfDoc.save({ useObjectStreams: true });
+  }
+
+  // JPEG 壓縮比的近似模型:scale² × quality^1.5
+  function compressRatioOf(scale, quality) {
+    return scale * scale * Math.pow(quality, 1.5);
+  }
+
+  // 達標後在 [goodRec.r, overRec.r] 之間二分搜,找「仍達標但品質更高」的參數
+  async function upProbe(buildFn, overRec, goodRec, targetBytes) {
+    let best = goodRec;
+    if (!overRec || overRec.r <= goodRec.r) return best;
+    let lowR = goodRec.r;
+    let highR = overRec.r;
+    const anchorR = goodRec.r;
+    for (let i = 0; i < 3; i++) {
+      const midR = (lowR + highR) / 2;
+      const factor = Math.pow(midR / anchorR, 1 / 3.5);
+      const ts = Math.min(1.0, goodRec.scale * factor);
+      const tq = Math.min(0.95, goodRec.quality * factor);
+      log(`\n[上探 ${i + 1}] scale=${ts.toFixed(2)} quality=${tq.toFixed(2)}(提升畫質)`);
+      startRace();
+      checkCancelled();
+      const tb = await buildFn(ts, tq);
+      log(`  → ${fmtMB(tb.length)}`);
+      if (tb.length <= targetBytes) {
+        best = { scale: ts, quality: tq, r: midR, bytes: tb };
+        lowR = midR;
+      } else {
+        highR = midR;
+      }
+    }
+    return best;
+  }
+
+  // 達標後:binary search 在 [current, MAX] 之間,持續探直到逼近 target 92%+
+  async function tryUpQuality(buildFn, currentBest, targetBytes, historyOver, maxScale = 1.0, maxQuality = 0.95) {
+    const MAX_S = maxScale, MAX_Q = maxQuality;
+    if (currentBest.scale >= MAX_S - 0.005 && currentBest.quality >= MAX_Q - 0.005) return currentBest;
+
+    let best = currentBest;
+    let lowR = compressRatioOf(best.scale, best.quality);
+    let lowScale = best.scale, lowQuality = best.quality;
+    let highR, highScale, highQuality;
+
+    if (historyOver) {
+      highR = historyOver.r;
+      highScale = historyOver.scale;
+      highQuality = historyOver.quality;
+    } else {
+      // 先試 MAX:若 MAX 達標直接收工,否則 MAX 作為 high bound
+      log(`\n[上探 試最大畫質] scale=${MAX_S.toFixed(2)} quality=${MAX_Q.toFixed(2)}`);
+      checkCancelled();
+      const maxBytes = await buildFn(MAX_S, MAX_Q);
+      log(`  → ${fmtMB(maxBytes.length)}`);
+      if (maxBytes.length <= targetBytes) {
+        return { scale: MAX_S, quality: MAX_Q, r: compressRatioOf(MAX_S, MAX_Q), bytes: maxBytes };
+      }
+      highR = compressRatioOf(MAX_S, MAX_Q);
+      highScale = MAX_S;
+      highQuality = MAX_Q;
+    }
+
+    // 3 輪 binary search(幾何中點)
+    for (let i = 0; i < 3; i++) {
+      const midR = Math.sqrt(lowR * highR);
+      const factor = Math.pow(midR / lowR, 1 / 3.5);
+      const ts = Math.min(MAX_S, lowScale * factor);
+      const tq = Math.min(MAX_Q, lowQuality * factor);
+      if (Math.abs(ts - lowScale) < 0.005) break;
+      log(`\n[上探 ${i + 1}] scale=${ts.toFixed(2)} quality=${tq.toFixed(2)}`);
+      checkCancelled();
+      const tb = await buildFn(ts, tq);
+      log(`  → ${fmtMB(tb.length)}`);
+      if (tb.length <= targetBytes) {
+        best = { scale: ts, quality: tq, r: midR, bytes: tb };
+        lowR = midR;
+        lowScale = ts; lowQuality = tq;
+        // 貼近 target 92%+ 就停
+        if (tb.length > targetBytes * 0.92) break;
+      } else {
+        highR = midR;
+        highScale = ts; highQuality = tq;
+      }
+    }
+    return best;
+  }
+
+  async function shrinkPreserve(file, targetBytes, codec) {
+    log(`模式:保留文字層(只壓圖片) · 編碼:Smart`);
+    log(`讀取 PDF ...`);
+    const origBuf = await file.arrayBuffer();
+
+    const probeDoc = await PDFLib.PDFDocument.load(origBuf, { updateMetadata: false });
+    const probeImages = await collectImageStreams(probeDoc);
+    log(`可處理的 JPEG 影像物件:${probeImages.length} 個`);
+    if (probeImages.length === 0) {
+      throw new Error('此 PDF 內沒有 JPEG 影像可壓縮。保留文字層模式無法生效,請改用「最大壓縮」。');
+    }
+
+    const ratio = targetBytes / file.size;
+    let [scale, quality] = pickStartPreserve(ratio);
+    log(`\n目標比例 ${(ratio * 100).toFixed(1)}%,起點 scale=${scale} quality=${quality}`);
+
+    // 預處理(只跑一次)— 跟 quality 無關的步驟全做完
+    log('\n[預處理] 跑一次 dedup / GC / Form / ICC / Flate(後續上探不再重做)');
+    startRace();
+    const prepBytes = await prepareDocumentBytes(origBuf, log);
+
+    const MAX_TRIES = 5;
+    const history = []; // [{scale, quality, r, bytes}]
+    let lastBytes = null;
+
+    for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+      log(`\n[第 ${attempt} 次] scale=${scale.toFixed(2)} quality=${quality.toFixed(2)}`);
+      startRace();
+      const bytes = await buildPreservePdf(prepBytes, scale, quality, codec, true);
+      log(`  → ${fmtMB(bytes.length)}`);
+      if (bytes.length <= targetBytes) {
+        // 達標 → 啟動「多版本探測 + 智慧拼合」(取代盲目 upProbe)
+        log(`\n[第 1 次達標] 啟動智慧拼合:多版本探測 + Knapsack`);
+        const setpointsHigh = { scale: 1.0, quality: 0.95, label: 'H' };
+        const setpointsMid = { scale: Math.min(1.0, (scale + 1.0) / 2), quality: Math.min(0.95, (quality + 0.95) / 2), label: 'M' };
+        const setpointsLow = { scale, quality, label: 'L' };
+        const setpoints = [setpointsLow, setpointsHigh, setpointsMid];
+
+        // 探測 LOW(就是剛才那輪的設定 — 重跑一次拿 candidates,不浪費,因為要捕捉 per-image)
+        const probeResults = [];
+        for (let s = 0; s < setpoints.length; s++) {
+          const sp = setpoints[s];
+          log(`\n[第 ${attempt + 1 + s} 次:探測 ${sp.label}] scale=${sp.scale.toFixed(2)} quality=${sp.quality.toFixed(2)}`);
+          startRace();
+          const probe = await buildPreservePdfProbe(prepBytes, sp.scale, sp.quality, codec, true);
+          probeResults.push(probe);
+        }
+
+        // Knapsack 拼合
+        log(`\n[第 ${attempt + 1 + setpoints.length} 次:智慧拼合]`);
+        const items = probeResults[0].items;
+        const { choices, estimatedTotal } = knapsackPickChoices(setpoints, probeResults, items, prepBytes.length, targetBytes, log);
+
+        // 拼合 + save
+        startRace();
+        const finalBytes = await assembleFinalPdf(prepBytes, setpoints, probeResults, choices, true);
+        log(`\n✓ 達標!最終 ${fmtMB(finalBytes.length)}(預估 ${fmtMB(estimatedTotal)})`);
+        return finalBytes;
+      }
+      lastBytes = bytes;
+      history.push({ scale, quality, r: compressRatioOf(scale, quality), bytes: bytes.length });
+
+      // 邊際效益檢查(第 2 次以後)
+      if (history.length >= 2) {
+        const prev = history[history.length - 2];
+        const curr = history[history.length - 1];
+        const marginal = (prev.bytes - curr.bytes) / prev.bytes;
+        if (marginal < 0.03 && curr.bytes > targetBytes * 1.05) {
+          throw new Error(
+            `已逼近本模式壓縮下限(${fmtMB(curr.bytes)},邊際效益僅 ${(marginal * 100).toFixed(1)}%)。\n` +
+            `文字層/字體/向量等非 JPEG 內容無法再壓。\n` +
+            `→ 改「最大壓縮(整頁變圖)」可把文字層也壓掉、繼續壓到 ${fmtMB(targetBytes)}。`
+          );
+        }
+      }
+
+      // 找 r 差異最大、bytes 差異有意義的兩點估 C, J
+      let est = null;
+      for (let i = 0; i < history.length; i++) {
+        for (let j = i + 1; j < history.length; j++) {
+          const a = history[i], b = history[j];
+          const dr = Math.abs(a.r - b.r);
+          const db = Math.abs(a.bytes - b.bytes);
+          if (dr < 0.05 || db < 300 * 1024) continue;
+          const J = (a.bytes - b.bytes) / (a.r - b.r);
+          const C = b.bytes - J * b.r;
+          if (J <= 0 || C <= 0) continue;
+          if (!est || dr > est.dr) est = { J, C, dr };
+        }
+      }
+
+      if (est) {
+        log(`  估:非 JPEG 常數 ≈ ${fmtMB(est.C)},JPEG 可壓縮池 ≈ ${fmtMB(est.J)}`);
+        if (est.C >= targetBytes * 0.95) {
+          throw new Error(
+            `此 PDF 的非 JPEG 部分(文字層+字體+向量)約 ${fmtMB(est.C)},` +
+            `已接近或超過目標 ${fmtMB(targetBytes)}。\n` +
+            `本模式無論怎麼壓 JPEG 都卡在 ${fmtMB(est.C)} 附近。\n` +
+            `→ 改「最大壓縮(整頁變圖)」可把文字層也壓掉、達標。`
+          );
+        }
+        const curr = history[history.length - 1];
+        const rTarget = (targetBytes * 0.93 - est.C) / est.J;
+        if (rTarget > 0 && rTarget < curr.r) {
+          const factor = Math.pow(rTarget / curr.r, 1 / 3.5);
+          scale = Math.max(0.18, Math.min(1.0, curr.scale * factor));
+          quality = Math.max(0.22, Math.min(0.95, curr.quality * factor));
+          continue;
+        }
+      }
+
+      // fallback:估不出來時用舊公式
+      [scale, quality] = refineParams(scale, quality, bytes.length, targetBytes);
+    }
+    throw new Error(`試 ${MAX_TRIES} 次仍未達標,最後 ${fmtMB(lastBytes.length)}。可改用「最大壓縮」或提高目標。`);
+  }
+
+  async function shrinkViewPreserve(file, maxPx, label, codec, quality = 0.85, qLabel = '標準') {
+    log(`模式:保留文字層 + 觀看解析度 ${label} · 畫質:${qLabel} · 編碼:Smart`);
+    log(`目標像素上限:${maxPx}px(最長邊),quality=${quality}`);
+    const origBuf = await file.arrayBuffer();
+    const pdfDoc = await PDFLib.PDFDocument.load(origBuf, { updateMetadata: false });
+    startRace();
+    // Phase 0-8%: dedup(無 tick,靠 heartbeat 爬)
+    setProgressPhase(0, 8);
+    const dup = await dedupImages(pdfDoc);
+    if (dup.count > 0) log(`影像去重:合併 ${dup.count} 個重複,省 ${fmtMB(dup.saved)}`);
+    stripMetadata(pdfDoc);
+    const items = await collectImageStreams(pdfDoc);
+    log(`可處理影像:${items.length} 個(JPEG + PNG-like)`);
+    if (items.length === 0) {
+      throw new Error('此 PDF 內沒有可處理的影像。');
+    }
+
+    let downscaled = 0, reencoded = 0, unchanged = 0;
+    const codecWins = new Map();
+    log('');
+    // Phase 8-82%: 主迴圈
+    setProgressPhase(8, 74);
+    for (let i = 0; i < items.length; i++) {
+      if (i % 5 === 0) checkCancelled();
+      const { ref, obj, dict } = items[i];
+      const widthObj = dict.get(PDFLib.PDFName.of('Width'));
+      const heightObj = dict.get(PDFLib.PDFName.of('Height'));
+      const origW = widthObj && widthObj.asNumber ? widthObj.asNumber() : 0;
+      const origH = heightObj && heightObj.asNumber ? heightObj.asNumber() : 0;
+      if (origW === 0 || origH === 0) { unchanged++; }
+      else {
+        const longest = Math.max(origW, origH);
+        const scale = Math.min(1.0, maxPx / longest);
+        const result = await recompressImage(obj.contents, scale, quality, codec, items[i].filterType, dict, pdfDoc.context, !!items[i].hasMask);
+        if (result && result.bytes.length < obj.contents.length) {
+          applyImageReplacement(pdfDoc, ref, dict, origW, origH, scale, result);
+          if (scale < 1.0) downscaled++; else reencoded++;
+          const lbl = result.label || 'unknown';
+          codecWins.set(lbl, (codecWins.get(lbl) || 0) + 1);
+        } else {
+          unchanged++;
+        }
+      }
+      setProgress(((i + 1) / items.length) * 100);
+      if ((i + 1) % 20 === 0 || i === items.length - 1) {
+        const lines = $log.textContent.split('\n');
+        lines[lines.length - 1] = `  處理影像 ${i + 1}/${items.length}(縮尺寸 ${downscaled}、只重壓 ${reencoded}、不動 ${unchanged})`;
+        $log.textContent = lines.join('\n');
+        $log.scrollTop = $log.scrollHeight;
+      }
+    }
+    if (codecWins.size > 0) {
+      const codecStats = Array.from(codecWins.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `${k}(${v})`).join(', ');
+      log(`Codec 賽馬贏家:${codecStats}`);
+    }
+    // save() 是 CPU-bound,用 CSS transition 讓動物在 compositor 繼續爬
+    creepToFinish();
+    await waitForCompositorCommit();
+    const bytes = await pdfDoc.save({ useObjectStreams: true });
+    log(`\n✓ 輸出 ${fmtMB(bytes.length)}`);
+    return bytes;
+  }
+
+  async function shrinkViewRaster(file, maxPx, label, codec, quality = 0.85, qLabel = '標準') {
+    log(`模式:最大壓縮 + 觀看解析度 ${label} · 畫質:${qLabel} · 編碼:Smart`);
+    log(`每頁最長邊上限:${maxPx}px,quality=${quality}`);
+    const buf = await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+    log(`頁數:${doc.numPages}`);
+    const pages = [];
+    for (let i = 1; i <= doc.numPages; i++) pages.push(await doc.getPage(i));
+
+    let maxDim = 0;
+    for (const p of pages) {
+      const vp = p.getViewport({ scale: 1 });
+      maxDim = Math.max(maxDim, vp.width, vp.height);
+    }
+    const scale = Math.min(4.0, maxPx / maxDim);
+    log(`\n頁面最長邊 ${Math.round(maxDim)}pt → render scale=${scale.toFixed(2)}(canvas 最長邊 ≈ ${Math.round(maxDim * scale)}px)`);
+
+    startRace();
+    const bytes = await buildPdf(pages, scale, quality, (n, total) => {
+      const lines = $log.textContent.split('\n');
+      lines[lines.length - 1] = `  渲染 ${n}/${total}`;
+      $log.textContent = lines.join('\n');
+      $log.scrollTop = $log.scrollHeight;
+    }, codec);
+    log(`\n✓ 輸出 ${fmtMB(bytes.length)}`);
+    return bytes;
+  }
+
+  async function shrink(file) {
+    log(`原始大小:${fmtMB(file.size)}`);
+    const tgtType = document.querySelector('input[name=tgtType]:checked').value;
+    const mode = document.querySelector('input[name=mode]:checked').value;
+    const codec = document.querySelector('input[name=codec]:checked').value;
+    if (tgtType === 'view') {
+      const preset = document.getElementById('view').value;
+      const { maxPx, label } = VIEW_PRESETS[preset];
+      const vq = document.querySelector('input[name=vq]:checked')?.value || 'std';
+      const quality = { low: 0.7, std: 0.82, high: 0.92 }[vq];
+      const qLabel = { low: '低', std: '標準', high: '高' }[vq];
+      return mode === 'preserve'
+        ? shrinkViewPreserve(file, maxPx, label, codec, quality, qLabel)
+        : shrinkViewRaster(file, maxPx, label, codec, quality, qLabel);
+    }
+    const targetMB = parseFloat($target.value);
+    const targetBytes = targetMB * 1024 * 1024;
+    log(`目標上限:${fmtMB(targetBytes)}`);
+    return mode === 'preserve'
+      ? shrinkPreserve(file, targetBytes, codec)
+      : shrinkRaster(file, targetBytes, codec);
+  }
+
+  const $mascots = document.getElementById('mascots');
+
+
+  $cancel.addEventListener('click', () => {
+    cancelRequested = true;
+    $cancel.disabled = true;
+    $cancel.textContent = '取消中...';
+  });
+
+  $go.addEventListener('click', async () => {
+    if (!currentFile) return;
+    $go.disabled = true;
+    $cancel.hidden = false;
+    $cancel.disabled = false;
+    $cancel.textContent = '取消';
+    cancelRequested = false;
+    $download.style.display = 'none';
+    clearLog();
+    const tgtType = document.querySelector('input[name=tgtType]:checked').value;
+    if (tgtType === 'size') {
+      const mb = parseFloat($target.value);
+      if (!(mb > 0)) { log('目標必須 > 0'); $go.disabled = false; $cancel.hidden = true; return; }
+    }
+    $mascots.classList.remove('done', 'shark-won', 'dino-won');
+    $mascots.classList.add('busy');
+    resetRace();
+    try {
+      const bytes = await shrink(currentFile);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const mode = document.querySelector('input[name=mode]:checked').value;
+      const modeTag = mode === 'raster' ? '圖' : '文';
+      const suffix = tgtType === 'size'
+        ? `-${parseFloat($target.value)}MB-${modeTag}`
+        : `-${document.getElementById('view').value}-${modeTag}`;
+      const outName = currentFile.name.replace(/\.pdf$/i, '') + `-shrunk${suffix}.pdf`;
+      $download.href = url;
+      $download.download = outName;
+      $download.style.display = 'inline-block';
+      $download.textContent = `下載 ${outName}`;
+      // 檔案已產出 → 推到 100%、揭曉勝者、秀獎盃
+      declareWinner();
+      $mascots.classList.remove('busy');
+      $mascots.classList.add('done');
+      setTimeout(() => {
+        $mascots.classList.remove('done', 'shark-won', 'dino-won');
+      }, 2400);
+    } catch (err) {
+      stopHeartbeat();
+      log('\n✗ ' + (cancelRequested ? '已取消' : '失敗:' + err.message));
+      console.error(err);
+      $mascots.classList.remove('busy');
+    } finally {
+      $go.disabled = false;
+      $cancel.hidden = true;
+    }
+  });
+})();
+</script>
+</body>
+</html>
