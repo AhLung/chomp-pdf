@@ -84,6 +84,16 @@
     color: var(--text-2); font-size: 14px;
     margin-bottom: 28px;
   }
+  .sub a {
+    color: var(--text-2);
+    text-decoration: underline;
+    text-decoration-color: var(--border);
+    text-underline-offset: 2px;
+  }
+  .sub a:hover {
+    color: var(--accent);
+    text-decoration-color: var(--accent);
+  }
 
   /* Dropzone */
   #drop {
@@ -459,7 +469,7 @@
 <body>
 
 <h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.1.0</span></h1>
-<div class="sub">離線壓縮 PDF · 鯊魚跟恐龍幫你搞定 · 100% 本機處理</div>
+<div class="sub">離線壓縮 PDF · 鯊魚跟恐龍幫你搞定 · 100% 本機處理 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
 
 <label id="drop" for="file">
   <div><strong>拖 PDF 進來</strong> 或點這裡選檔</div>
