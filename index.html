@@ -1834,6 +1834,13 @@
     return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   }
 
+  // 給瀏覽器一點呼吸空間,降低「網頁未回應」對話框出現機率
+  // pdf-lib 的 save() 是 CPU-bound,中間沒辦法 yield;但 save() 前後 yield 能讓
+  // 事件迴圈處理使用者輸入、避免瀏覽器把整個 tab 標記為 hung
+  function yieldToMain(ms = 60) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
   // 最終檔案產出後呼叫:停 heartbeat、移除 creeping、強制 100、隨機抽 winner
   function declareWinner() {
     stopHeartbeat();
@@ -2074,9 +2081,13 @@
       log(`壓縮引擎使用次數:${codecStats}`);
     }
     // save() 是 CPU-bound,用 CSS transition 讓動物在 compositor 繼續爬
+    log('  正在輸出 PDF(大檔可能要幾十秒)...');
     creepToFinish();
     await waitForCompositorCommit();
-    return await outDoc.save({ useObjectStreams: true });
+    await yieldToMain();
+    const out = await outDoc.save({ useObjectStreams: true });
+    await yieldToMain();
+    return out;
   }
 
   // preserve 模式起點(scale 是 image downscale factor,≤ 1.0)
@@ -2433,7 +2444,9 @@
 
     setProgressPhase(32, 5);
     log2('  保存預處理結果...');
+    await yieldToMain();
     const prepBytes = await pdfDoc.save({ useObjectStreams: true });
+    await yieldToMain();
     log2(`  預處理完成:${fmtMB(origBuf.byteLength || origBuf.length)} → ${fmtMB(prepBytes.length)}`);
     return prepBytes;
   }
@@ -2573,9 +2586,13 @@
       if (dangling > 0) log(`  ⚠ 提醒:${dangling} 張遮色片連結異常(少數圖可能出現灰底)`);
     }
     // save() 是 CPU-bound,用 CSS transition 讓動物在 compositor 繼續爬
+    if (verboseLog) log('  正在輸出 PDF(大檔可能要幾十秒)...');
     creepToFinish();
     await waitForCompositorCommit();
-    return await pdfDoc.save({ useObjectStreams: true });
+    await yieldToMain();
+    const out = await pdfDoc.save({ useObjectStreams: true });
+    await yieldToMain();
+    return out;
   }
 
   // ==== 多版本探測 + 揹包問題拼合 ====
@@ -2797,9 +2814,13 @@
       }).join(' · ');
       log(`  拼合完成:共套 ${applied} 張 → ${dist}`);
     }
+    log('  正在輸出 PDF(大檔可能要幾十秒)...');
     creepToFinish();
     await waitForCompositorCommit();
-    return await pdfDoc.save({ useObjectStreams: true });
+    await yieldToMain();
+    const out = await pdfDoc.save({ useObjectStreams: true });
+    await yieldToMain();
+    return out;
   }
 
   // JPEG 壓縮比的近似模型:scale² × quality^1.5
@@ -3131,9 +3152,12 @@
     if (plateImageCount > 0) log(`偵測到大色塊圖 ${plateImageCount} 張,額外壓一點`);
     if (probeUpgradeCount > 0) log(`${probeUpgradeCount} 張大圖找到更清晰的版本`);
     // save() 是 CPU-bound,用 CSS transition 讓動物在 compositor 繼續爬
+    log('正在輸出 PDF(大檔可能要幾十秒)...');
     creepToFinish();
     await waitForCompositorCommit();
+    await yieldToMain();
     const bytes = await pdfDoc.save({ useObjectStreams: true });
+    await yieldToMain();
     log(`\n✓ 輸出 ${fmtMB(bytes.length)}`);
     return bytes;
   }
