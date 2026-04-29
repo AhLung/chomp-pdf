@@ -480,18 +480,23 @@
 <div id="codecStatus" style="font-size:11px;color:#888;margin:4px 0;"></div>
 <div id="analysis"></div>
 
-<div class="row mode-row">
+<!-- 目標類型 radio:暫時藏起來,只走「縮到指定大小」 -->
+<div class="row mode-row" style="display:none">
   <span class="mode-label">目標</span>
   <label class="radio"><input type="radio" name="tgtType" value="size" checked> 縮到指定大小</label>
   <label class="radio"><input type="radio" name="tgtType" value="view"> 依裝置挑畫質</label>
 </div>
-<div class="row-hint" id="tgtHint">告訴工具你要多小,畫質自動調到剛好符合</div>
+<div class="row-hint" id="tgtHint" style="display:none"></div>
 
 <div class="row" id="rowSize">
-  <label for="target">上限</label>
-  <input type="number" id="target" min="0.1" step="0.1" value="5">
+  <label for="useTargetSize" style="cursor:pointer; user-select:none; display:inline-flex; align-items:center; gap:4px;">
+    <input type="checkbox" id="useTargetSize">
+    限制檔案大小:
+  </label>
+  <input type="number" id="target" min="0.1" step="0.1" value="5" disabled>
   <span>MB</span>
 </div>
+<div class="row-hint" id="targetCheckHint">未勾選 = 自動找畫質與大小的最佳平衡(壓一次)</div>
 
 <div class="row" id="rowView" style="display:none">
   <label for="view">主要在哪看</label>
@@ -696,21 +701,15 @@
     return { idat, width, height, bitDepth, colors, colorspace };
   }
 
-  // 編碼策略:永遠序列跑 JP2 + MozJPEG +(小圖 OxiPNG),取最小
-  // 序列避免 WASM 並行搶 CPU。codec 參數保留只做 fallback,實際永遠跑 smart
+  // 編碼策略:序列跑 MozJPEG +(小圖 OxiPNG),取最小
+  // JPEG 2000(JPX)輸出在 macOS Preview / 部分系統 PDF 引擎相容性差,預設不啟用
+  // 序列避免 WASM 並行搶 CPU
   async function encodeCanvas(canvas, quality, codec) {
     const W = canvas.width, H = canvas.height;
     const isSmall = (W * H <= 240 * 240);
     let imgData = null;
     const getImgData = () => imgData || (imgData = canvasToImageData(canvas));
     const results = [];
-
-    // JP2
-    try {
-      const ratio = Math.max(5, Math.min(150, 15 / Math.max(0.1, quality)));
-      const bytes = await encodeCanvasToJpx(canvas, ratio);
-      results.push({ bytes, filter: 'JPXDecode', label: 'jp2' });
-    } catch (_) {}
 
     // MozJPEG(WASM fallback to canvas JPEG)
     if (window.JsCodecs && window.JsCodecs.encodeMozJpeg) {
@@ -1693,6 +1692,22 @@
     if (tgt) tgt.addEventListener('input', () => { window.__userPickedTarget = true; });
   }, 0);
 
+  // 限制檔案大小 checkbox:勾起來才啟用 input
+  const $useTargetSize = document.getElementById('useTargetSize');
+  const $targetCheckHint = document.getElementById('targetCheckHint');
+  if ($useTargetSize) {
+    $useTargetSize.addEventListener('change', () => {
+      const checked = $useTargetSize.checked;
+      const tgt = document.getElementById('target');
+      if (tgt) tgt.disabled = !checked;
+      if ($targetCheckHint) {
+        $targetCheckHint.textContent = checked
+          ? '工具會在這個大小內保留最佳畫質'
+          : '未勾選 = 自動找畫質與大小的最佳平衡(壓一次)';
+      }
+    });
+  }
+
   document.querySelectorAll('input[name=tgtType]').forEach(r => r.addEventListener('change', () => {
     const t = document.querySelector('input[name=tgtType]:checked').value;
     $rowSize.style.display = t === 'size' ? '' : 'none';
@@ -1958,7 +1973,7 @@
         ${a.bBytes > 0 ? `<div>🎭 <strong>遮色片:${fmtMB(a.bBytes)}</strong>(${bPct.toFixed(0)}%)— 會優化,省一點</div>` : ''}
         ${a.cBytes > 0 ? `<div>🚫 <strong>特殊格式:${fmtMB(a.cBytes)}</strong>(${cPct.toFixed(0)}%)— 原樣保留,不影響閱讀</div>` : ''}
         <div>📄 <strong>文字、字體、向量圖:${fmtMB(a.textOtherBytes)}</strong>(${textPct.toFixed(0)}%)</div>
-        <div style="color:var(--text-3);margin-top:6px">💡 <strong>建議目標 ${recommendedMB} MB</strong>(已自動填入,按下壓縮即可)</div>
+        <div style="color:var(--text-3);margin-top:6px">💡 預設「自動最佳化」即可。若想限制大小,勾下方並設 <strong>${recommendedMB} MB</strong>(已預填)。</div>
       </div>
     `;
     $analysis.style.display = 'block';
@@ -1968,12 +1983,7 @@
       if (rb) rb.checked = true;
     }
     if (!window.__userPickedTarget) {
-      // 切到 size 模式 + 填值
-      const sizeRadio = document.querySelector('input[name=tgtType][value=size]');
-      if (sizeRadio) {
-        sizeRadio.checked = true;
-        sizeRadio.dispatchEvent(new Event('change', { bubbles: true }));
-      }
+      // 預填推薦值,但不勾選(用戶自己決定要不要限制大小)
       const targetEl = document.getElementById('target');
       if (targetEl) targetEl.value = recommendedMB;
     }
@@ -2500,14 +2510,22 @@
       const { ref, obj, dict, filterType, hasMask } = items[i];
       const orig = obj.contents;
       const dim = itemDims[i];
-      // 智慧分配:rank 0=最大圖(1.25x boost),1=最小圖(0.75x)
+      const shortDim = Math.min(dim.w, dim.h);
+      // 小圖保護:< 300px 短邊 OR < 90000 像素 → 不套 rank 降權、不再縮尺寸
+      const isSmallImage = shortDim < 300 || dim.pixels < 90000;
       const rank = rankByIdx.get(i) ?? 0.5;
-      const boost = 1.25 - rank * 0.5;
-      // Fovea #1:跨頁背景圖額外 0.85x(承讓給重點圖)
-      const bgPenalty = isPageBgLike(dim.w, dim.h, rank) ? 0.85 : 1.0;
+      // 大圖才套智慧分配,小圖維持原品質
+      const boost = isSmallImage ? 1.0 : (1.25 - rank * 0.5);
+      // Fovea #1:跨頁背景圖額外 0.85x(只在大圖判定)
+      const bgPenalty = (!isSmallImage && isPageBgLike(dim.w, dim.h, rank)) ? 0.85 : 1.0;
       if (bgPenalty < 1) bgImageCount++;
-      const perScale = Math.max(0.2, Math.min(1.0, scale * boost * bgPenalty));
-      const perQuality = Math.max(0.3, Math.min(0.95, quality * boost * bgPenalty));
+      let perScale = Math.max(0.2, Math.min(1.0, scale * boost * bgPenalty));
+      // 小圖不再縮尺寸(避免馬賽克),也不讓任何圖縮到短邊 < 200px
+      if (isSmallImage) perScale = 1.0;
+      else if (shortDim * perScale < 200 && shortDim >= 200) perScale = 200 / shortDim;
+      // 小圖用較高品質下限(避免 JPEG 區塊感)
+      const qFloor = isSmallImage ? 0.75 : 0.3;
+      const perQuality = Math.max(qFloor, Math.min(0.95, quality * boost * bgPenalty));
       // Fovea #2:plate-like 偵測由 recompressImage 內部處理,給個 hint
       const result = await recompressImage(orig, perScale, perQuality, codec, filterType, dict, pdfDoc.context, !!hasMask);
       if (!result) {
@@ -2607,12 +2625,18 @@
       const { obj, dict, filterType, hasMask } = items[i];
       const orig = obj.contents;
       const dim = itemDims[i];
+      const shortDim = Math.min(dim.w, dim.h);
+      // 小圖保護:< 300 短邊 / < 90000 像素 → 不套 rank、不縮尺寸
+      const isSmallImage = shortDim < 300 || dim.pixels < 90000;
       const rank = rankByIdx.get(i) ?? 0.5;
-      const boost = 1.25 - rank * 0.5;
-      const bgPenalty = isPageBgLike(dim.w, dim.h, rank) ? 0.85 : 1.0;
+      const boost = isSmallImage ? 1.0 : (1.25 - rank * 0.5);
+      const bgPenalty = (!isSmallImage && isPageBgLike(dim.w, dim.h, rank)) ? 0.85 : 1.0;
       if (bgPenalty < 1) bgCount++;
-      const perScale = Math.max(0.2, Math.min(1.0, scale * boost * bgPenalty));
-      const perQuality = Math.max(0.3, Math.min(0.95, quality * boost * bgPenalty));
+      let perScale = Math.max(0.2, Math.min(1.0, scale * boost * bgPenalty));
+      if (isSmallImage) perScale = 1.0;
+      else if (shortDim * perScale < 200 && shortDim >= 200) perScale = 200 / shortDim;
+      const qFloor = isSmallImage ? 0.75 : 0.3;
+      const perQuality = Math.max(qFloor, Math.min(0.95, quality * boost * bgPenalty));
       const result = await recompressImage(orig, perScale, perQuality, codec, filterType, dict, pdfDoc.context, !!hasMask);
       if (result && result.bytes.length < orig.length) {
         candidates[i] = { ...result, perScale, origLen: orig.length };
@@ -3055,14 +3079,18 @@
       if (origW === 0 || origH === 0) { unchanged++; }
       else {
         const longest = Math.max(origW, origH);
-        const scale = Math.min(1.0, maxPx / longest);
-        // rank 0(最大)→ 1.18x boost,rank 1(最小)→ 0.88x
+        const shortDim = Math.min(origW, origH);
+        const totalPixels = origW * origH;
+        let scale = Math.min(1.0, maxPx / longest);
+        // 小圖保護:< 300 短邊 / < 90000 像素 → 不縮、不降權
+        const isSmallImage = shortDim < 300 || totalPixels < 90000;
+        if (isSmallImage) scale = 1.0;
         const rank = rankByIdx.get(i) ?? 0.5;
-        const boost = 1.18 - rank * 0.30;
-        // Fovea:跨頁背景圖額外 0.85x
-        const bgPenalty = isPageBgLike(origW, origH, rank) ? 0.85 : 1.0;
+        const boost = isSmallImage ? 1.0 : (1.18 - rank * 0.30);
+        const bgPenalty = (!isSmallImage && isPageBgLike(origW, origH, rank)) ? 0.85 : 1.0;
         if (bgPenalty < 1) bgImageCount++;
-        const perQuality = Math.max(0.5, Math.min(0.98, quality * boost * bgPenalty));
+        const qFloor = isSmallImage ? 0.78 : 0.5;
+        const perQuality = Math.max(qFloor, Math.min(0.98, quality * boost * bgPenalty));
         let result = await recompressImage(obj.contents, scale, perQuality, codec, filterType, dict, pdfDoc.context, !!hasMask);
         // Multi-probe:top 3 最大圖再試一個更高品質,如果 size 沒爆 >1.4x 就升級
         if (result && topBigIdx.has(i)) {
@@ -3138,11 +3166,70 @@
     return bytes;
   }
 
+  // 自動模式:單次壓縮,平衡畫質與大小,不重試
+  async function shrinkAuto(file, mode, codec) {
+    if (mode === 'raster') {
+      log(`模式:整頁轉圖片 · 自動最佳化(壓一次)`);
+      const buf = await file.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+      log(`頁數:${doc.numPages}`);
+      const pages = [];
+      for (let i = 1; i <= doc.numPages; i++) pages.push(await doc.getPage(i));
+      let maxDim = 0;
+      for (const p of pages) {
+        const vp = p.getViewport({ scale: 1 });
+        maxDim = Math.max(maxDim, vp.width, vp.height);
+      }
+      // 1080p 為基準 + 高品質,單次跑完
+      const MAX_PX = 1920;
+      const scale = Math.min(2.5, Math.max(1.5, MAX_PX / maxDim));
+      const quality = 0.82;
+      log(`\n渲染倍率 ${scale.toFixed(2)}× · 畫質 ${Math.round(quality * 100)}%`);
+      startRace();
+      const bytes = await buildPdf(pages, scale, quality, (n, total) => {
+        const lines = $log.textContent.split('\n');
+        lines[lines.length - 1] = `  渲染 ${n}/${total}`;
+        $log.textContent = lines.join('\n');
+        $log.scrollTop = $log.scrollHeight;
+      }, codec);
+      // 保險:auto 模式如果壓出來反而比較大,退回原檔
+      if (bytes.length >= file.size) {
+        log(`\n⚠ 壓縮後反而較大,自動退回原檔`);
+        return new Uint8Array(await file.arrayBuffer());
+      }
+      log(`\n✓ 輸出 ${fmtMB(bytes.length)}`);
+      return bytes;
+    }
+    // preserve 模式:預處理 + 單次 high-quality 壓縮
+    log(`模式:保留文字 · 自動最佳化(壓一次)`);
+    const origBuf = await file.arrayBuffer();
+    log(`讀取 PDF ...`);
+    setProgressPhase(0, 32);
+    const prepBytes = await prepareDocumentBytes(origBuf, log);
+    // 單次:scale=1.0(不縮)、quality=0.82(高品質)
+    setProgressPhase(32, 65);
+    log(`\n[單次壓縮](縮放 100% · 畫質 82%)`);
+    startRace();
+    const bytes = await buildPreservePdf(prepBytes, 1.0, 0.82, codec, true);
+    if (bytes.length >= file.size) {
+      log(`\n⚠ 壓縮後反而較大,自動退回原檔`);
+      return new Uint8Array(origBuf);
+    }
+    log(`\n✓ 輸出 ${fmtMB(bytes.length)}`);
+    return bytes;
+  }
+
   async function shrink(file) {
     log(`原始大小:${fmtMB(file.size)}`);
-    const tgtType = document.querySelector('input[name=tgtType]:checked').value;
+    const useTarget = document.getElementById('useTargetSize')?.checked;
     const mode = document.querySelector('input[name=mode]:checked').value;
     const codec = document.querySelector('input[name=codec]:checked').value;
+    const tgtType = document.querySelector('input[name=tgtType]:checked').value;
+
+    // 沒勾「限制檔案大小」→ 自動模式
+    if (!useTarget && tgtType === 'size') {
+      return shrinkAuto(file, mode, codec);
+    }
     if (tgtType === 'view') {
       const preset = document.getElementById('view').value;
       const { maxPx, label } = VIEW_PRESETS[preset];
@@ -3180,7 +3267,8 @@
     $download.style.display = 'none';
     clearLog();
     const tgtType = document.querySelector('input[name=tgtType]:checked').value;
-    if (tgtType === 'size') {
+    const useTarget = document.getElementById('useTargetSize')?.checked;
+    if (tgtType === 'size' && useTarget) {
       const mb = parseFloat($target.value);
       if (!(mb > 0)) { log('目標必須 > 0'); $go.disabled = false; $cancel.hidden = true; return; }
     }
@@ -3193,9 +3281,14 @@
       const url = URL.createObjectURL(blob);
       const mode = document.querySelector('input[name=mode]:checked').value;
       const modeTag = mode === 'raster' ? '圖' : '文';
-      const suffix = tgtType === 'size'
-        ? `-${parseFloat($target.value)}MB-${modeTag}`
-        : `-${document.getElementById('view').value}-${modeTag}`;
+      let suffix;
+      if (tgtType === 'view') {
+        suffix = `-${document.getElementById('view').value}-${modeTag}`;
+      } else if (useTarget) {
+        suffix = `-${parseFloat($target.value)}MB-${modeTag}`;
+      } else {
+        suffix = `-auto-${modeTag}`;
+      }
       const outName = currentFile.name.replace(/\.pdf$/i, '') + `-shrunk${suffix}.pdf`;
       $download.href = url;
       $download.download = outName;
