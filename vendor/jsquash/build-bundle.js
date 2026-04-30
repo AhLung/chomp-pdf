@@ -18,7 +18,7 @@ mozjpegJs = mozjpegJs.replace(/if\s*\(\s*import\.meta\.url\s*===\s*undefined\s*\
 // 再處理讀取 import.meta.url
 mozjpegJs = mozjpegJs.replace(/import\.meta\.url/g, "''");
 mozjpegJs = mozjpegJs.replace(/export\s+default\s+Module\s*;?/g, '');
-mozjpegJs = mozjpegJs.replace(/^var\s+Module\s*=\s*\(/m, 'window.__mozjpegFactory = (');
+mozjpegJs = mozjpegJs.replace(/^var\s+Module\s*=\s*\(/m, 'globalThis.__mozjpegFactory = (');
 
 const mozjpegWasmB64 = readWasmBase64(path.join(ROOT, 'jpeg/codec/enc/mozjpeg_enc.wasm'));
 
@@ -33,7 +33,7 @@ oxiJs = oxiJs.replace(/^export\s+\{\s*initSync\s*\}\s*;?\s*$/gm, '');
 oxiJs = oxiJs.replace(/^export\s+default\s+__wbg_init\s*;?\s*$/gm, '');
 oxiJs = oxiJs.replace(/^export\s+function\s+/gm, 'function ');
 // 包成 IIFE 並導出
-oxiJs = `window.__oxipngModule = (function() {
+oxiJs = `globalThis.__oxipngModule = (function() {
 ${oxiJs}
 return { initSync, init: __wbg_init, optimise: () => optimise, optimise_raw: () => optimise_raw };
 })();`;
@@ -75,14 +75,14 @@ const bundle = `/* ChompPDF codec bundle: MozJPEG (Emscripten) + OxiPNG (wasm-bi
   // === OxiPNG bindings (IIFE-wrapped) ===
   ${oxiJs}
 
-  // === Initialise both modules + expose window.JsCodecs ===
+  // === Initialise both modules + expose globalThis.JsCodecs ===
   let mozModuleP = null;
   let oxiInited = false;
 
   async function ensureMozJpeg() {
     if (!mozModuleP) {
       const wasmBinary = b64ToUint8(MOZJPEG_WASM_B64);
-      mozModuleP = window.__mozjpegFactory({
+      mozModuleP = globalThis.__mozjpegFactory({
         wasmBinary,
         noInitialRun: true,
         locateFile: () => '', // 不用,wasmBinary 已提供
@@ -118,18 +118,18 @@ const bundle = `/* ChompPDF codec bundle: MozJPEG (Emscripten) + OxiPNG (wasm-bi
   function ensureOxi() {
     if (!oxiInited) {
       const wasmBytes = b64ToUint8(OXIPNG_WASM_B64);
-      window.__oxipngModule.initSync(wasmBytes);
+      globalThis.__oxipngModule.initSync(wasmBytes);
       oxiInited = true;
     }
   }
 
   async function optimisePng(pngBytes, level) {
     ensureOxi();
-    const result = window.__oxipngModule.optimise(pngBytes, level || 4, false);
+    const result = globalThis.__oxipngModule.optimise(pngBytes, level || 4, false);
     return new Uint8Array(result);
   }
 
-  window.JsCodecs = { encodeMozJpeg, optimisePng };
+  globalThis.JsCodecs = { encodeMozJpeg, optimisePng };
   console.log('[ChompPDF] JsCodecs ready (bundle): MozJPEG + OxiPNG');
 })();
 `;

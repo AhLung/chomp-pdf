@@ -241,7 +241,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.4.9</span>
+        <span class="v3-badge">v1.5.0-alpha</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -401,6 +401,10 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.5.0-alpha</strong> · 2026-04-30</div>
+        <ul>
+          <li>(內部架構)Web Worker 骨架建好,啟動時背景載入所有 codec 驗證可用 — 為「壓更快」做準備,使用體驗暫時跟 v1.4.9 一樣</li>
+        </ul>
         <div class="cl-ver"><strong>v1.4.9</strong> · 2026-04-30</div>
         <ul>
           <li>修壓縮中鯊魚 🦈 跟恐龍 🦖 不會往右跑的 bug(v1.4.0 版面重做時 CSS 變數沒對到 JS,只動了一個 emoji 寬的距離)</li>
@@ -415,7 +419,7 @@
         </ul>
         <div class="cl-ver"><strong>v1.4.6</strong> · 2026-04-30</div>
         <ul>
-          <li>(同 v1.4.5,但偵測抽樣有 bug 標題仍糊 — 已於 v1.4.9 修正)</li>
+          <li>(同 v1.4.5,但偵測抽樣有 bug 標題仍糊 — 已於 v1.5.0-alpha 修正)</li>
         </ul>
         <div class="cl-ver"><strong>v1.4.5</strong> · 2026-04-30</div>
         <ul>
@@ -574,6 +578,67 @@
 <script>
 (() => {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+
+  // ===========================================================================
+  // Phase 1: compress-worker scaffolding(v1.5.0-alpha)
+  // 目標:啟動 worker、確認所有依賴(pdf-lib/pako/openjpegwasm/JsCodecs)都能在
+  //       worker 載入。Phase 1 不接管壓縮邏輯,主流程仍跑現有 main-thread 路徑。
+  // ===========================================================================
+  const supportsWorker = typeof Worker === 'function'
+    && typeof OffscreenCanvas === 'function'  // iOS Safari < 16.4 沒 OffscreenCanvas → fallback main thread
+    && typeof createImageBitmap === 'function';
+
+  let _compressWorker = null;
+  let _workerReady = null;
+  function getCompressWorker() {
+    if (!supportsWorker) return null;
+    if (_workerReady) return _workerReady;
+    _workerReady = new Promise((resolve, reject) => {
+      try {
+        const w = new Worker('vendor/compress-worker.js');
+        let onReady = null;
+        const timeout = setTimeout(() => {
+          console.warn('[ChompWorker] init timeout 8s');
+          reject(new Error('worker init timeout'));
+        }, 8000);
+        w.addEventListener('message', (e) => {
+          const m = e.data;
+          if (m.type === 'ready') {
+            clearTimeout(timeout);
+            const allOk = Object.values(m.deps).every(Boolean);
+            console.log('[ChompWorker] ready · deps:', m.deps, allOk ? '✓ 全綠' : '⚠ 有缺');
+            _compressWorker = w;
+            resolve({ worker: w, deps: m.deps, allOk });
+          } else if (m.type === 'error' && m.stage === 'importScripts') {
+            clearTimeout(timeout);
+            console.error('[ChompWorker] importScripts failed:', m.msg);
+            reject(new Error(m.msg));
+          }
+        });
+        w.addEventListener('error', (e) => {
+          clearTimeout(timeout);
+          console.error('[ChompWorker] worker error:', e.message || e);
+          reject(e);
+        });
+      } catch (e) {
+        console.warn('[ChompWorker] cannot spawn:', e.message);
+        reject(e);
+      }
+    });
+    return _workerReady;
+  }
+  // 啟動時就 fire-and-forget 初始化(背景載 worker,不阻塞 UI)
+  if (supportsWorker) {
+    getCompressWorker().catch(err => {
+      console.warn('[ChompWorker] init failed,fallback main thread:', err.message);
+      _compressWorker = null;
+      _workerReady = null;
+    });
+  } else {
+    console.log('[ChompWorker] 環境不支援(無 OffscreenCanvas / createImageBitmap),維持主執行緒模式');
+  }
+  // 暴露給後續 Phase 用
+  globalThis.__chompGetWorker = getCompressWorker;
 
   // Lazy-init JPEG 2000 encoder (WASM)
   let _jpxModule = null;

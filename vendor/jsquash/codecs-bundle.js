@@ -16,7 +16,7 @@
 
   // === MozJPEG factory ===
   
-window.__mozjpegFactory = (() => {
+globalThis.__mozjpegFactory = (() => {
   var _scriptDir = '';
   
   return (
@@ -32,7 +32,7 @@ var Module=moduleArg;var readyPromiseResolve,readyPromiseReject;var readyPromise
 
 
   // === OxiPNG bindings (IIFE-wrapped) ===
-  window.__oxipngModule = (function() {
+  globalThis.__oxipngModule = (function() {
 let wasm;
 
 const cachedTextDecoder = (typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8', { ignoreBOM: true, fatal: true }) : { decode: () => { throw Error('TextDecoder not available') } } );
@@ -248,14 +248,14 @@ if (isRunningInCloudFlareWorkers || isRunningInNode) {
   
 })();
 
-  // === Initialise both modules + expose window.JsCodecs ===
+  // === Initialise both modules + expose globalThis.JsCodecs ===
   let mozModuleP = null;
   let oxiInited = false;
 
   async function ensureMozJpeg() {
     if (!mozModuleP) {
       const wasmBinary = b64ToUint8(MOZJPEG_WASM_B64);
-      mozModuleP = window.__mozjpegFactory({
+      mozModuleP = globalThis.__mozjpegFactory({
         wasmBinary,
         noInitialRun: true,
         locateFile: () => '', // 不用,wasmBinary 已提供
@@ -291,17 +291,17 @@ if (isRunningInCloudFlareWorkers || isRunningInNode) {
   function ensureOxi() {
     if (!oxiInited) {
       const wasmBytes = b64ToUint8(OXIPNG_WASM_B64);
-      window.__oxipngModule.initSync(wasmBytes);
+      globalThis.__oxipngModule.initSync(wasmBytes);
       oxiInited = true;
     }
   }
 
   async function optimisePng(pngBytes, level) {
     ensureOxi();
-    const result = window.__oxipngModule.optimise(pngBytes, level || 4, false);
+    const result = globalThis.__oxipngModule.optimise(pngBytes, level || 4, false);
     return new Uint8Array(result);
   }
 
-  window.JsCodecs = { encodeMozJpeg, optimisePng };
+  globalThis.JsCodecs = { encodeMozJpeg, optimisePng };
   console.log('[ChompPDF] JsCodecs ready (bundle): MozJPEG + OxiPNG');
 })();
