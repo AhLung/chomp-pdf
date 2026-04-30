@@ -4,642 +4,518 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ChompPDF</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    color-scheme: light dark;
-    --bg: #faf9f5;
-    --surface: #ffffff;
-    --surface-2: #f5f0e6;
-    --border: rgba(61, 57, 41, 0.1);
-    --border-strong: rgba(61, 57, 41, 0.18);
-    --text: #3d3929;
-    --text-2: #6b6453;
-    --text-3: #9b9383;
-    --accent: #c96442;
-    --accent-2: #a84f30;
-    --accent-soft: rgba(201, 100, 66, 0.12);
-    --ocean: #0891b2;
-    --ocean-soft: rgba(8, 145, 178, 0.14);
-    --sand: #f5e6c8;
-    --grass: #84cc16;
-    --success: #10b981;
-    --success-2: #059669;
-    --success-soft: rgba(16, 185, 129, 0.14);
-    --warn: #d97706;
-    --warn-soft: rgba(217, 119, 6, 0.14);
-    --radius: 14px;
-    --radius-sm: 10px;
-    --radius-lg: 20px;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #1f1d16;
-      --surface: #2a2720;
-      --surface-2: #34302a;
-      --border: rgba(245, 230, 200, 0.08);
-      --border-strong: rgba(245, 230, 200, 0.16);
-      --text: #f5efe0;
-      --text-2: #beb4a0;
-      --text-3: #8c8574;
-      --accent: #e08968;
-      --accent-2: #f4a584;
-      --accent-soft: rgba(224, 137, 104, 0.18);
-      --ocean: #22d3ee;
-      --ocean-soft: rgba(34, 211, 238, 0.16);
-      --sand: #5c4a2e;
-    }
-  }
-
-  * { box-sizing: border-box; }
-  html, body { background: var(--bg); color: var(--text); }
-  body {
-    font-family: -apple-system, "SF Pro Text", "Inter", system-ui, sans-serif;
-    font-size: 15px;
-    max-width: 560px;
-    margin: 56px auto 80px;
-    padding: 0 20px;
-    line-height: 1.55;
-    -webkit-font-smoothing: antialiased;
-  }
-  h1 {
-    margin: 0 0 6px;
-    font-family: "Tiempos Text", "New York", Georgia, "Times New Roman", serif;
-    font-size: 32px; font-weight: 600;
-    letter-spacing: -0.02em;
-  }
-  h1 .emoji { font-family: -apple-system, "Apple Color Emoji", sans-serif; margin-right: 4px; }
-  h1 .version {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 11px;
-    font-weight: 500;
-    vertical-align: middle;
-    margin-left: 10px;
-    padding: 2px 8px;
-    background: var(--surface-2);
-    color: var(--text-3);
-    border-radius: 999px;
-    letter-spacing: 0;
-  }
-  .sub {
-    color: var(--text-2); font-size: 14px;
-    margin-bottom: 28px;
-  }
-  .sub a {
-    color: var(--text-2);
-    text-decoration: underline;
-    text-decoration-color: var(--border);
-    text-underline-offset: 2px;
-  }
-  .sub a:hover {
-    color: var(--accent);
-    text-decoration-color: var(--accent);
-  }
-
-  /* Dropzone */
-  #drop {
-    display: block;
-    border: 1.5px dashed var(--border-strong);
-    border-radius: var(--radius-lg);
-    padding: 44px 24px;
-    text-align: center;
-    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
-    cursor: pointer;
-    transition: border-color .2s, background .2s, transform .1s;
-  }
-  #drop:hover { border-color: var(--accent); }
-  #drop.hover { border-color: var(--accent); background: var(--accent-soft); }
-  #drop strong { font-weight: 600; }
-  #drop .hint { color: var(--text-3); font-size: 13px; margin-top: 6px; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100vh; background: #fef7f0; }
+  body { color-scheme: light dark; }
   input[type=file] { display: none; }
 
-  #fileInfo {
-    font-size: 13px; color: var(--text-2);
-    margin-top: 12px;
-    padding: 8px 12px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    display: inline-block;
+  /* ── V3 Candy theme ────────────────────────────────────────────── */
+  .v3-root {
+    --bg: #fef7f0; --card: #fff; --border: #f0e4d8; --border2: #e8d5c4;
+    --fg: #3a2e24; --fg2: #7a6b5c; --fg3: #b8a898;
+    --pink: #e86ca0; --pink-soft: #fdf0f5;
+    --peach: #f4845f; --peach-soft: #fef0eb;
+    --mint: #34d399; --mint-soft: #ecfdf5;
+    --violet: #8b5cf6; --violet-soft: #f3f0ff;
+    --r: 20px; --r-sm: 14px;
+    background: var(--bg); color: var(--fg);
+    font-family: "Noto Sans TC", "Inter", -apple-system, system-ui, sans-serif;
+    font-size: 15px; line-height: 1.6;
+    width: 100%; min-height: 100vh; padding: 32px 16px 48px;
   }
-  #fileInfo:empty { display: none; }
-  #analysis {
-    margin-top: 12px;
-    padding: 12px 14px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    display: none;
-  }
-  #analysis .breakdown { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; margin-top: 6px; line-height: 1.8; }
-  #analysis .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 6px 0; border: 1px solid var(--border); }
-  #analysis .bar .jpeg { background: var(--accent); }
-  #analysis .bar .other { background: var(--text-3); }
-  #cancel {
-    background: linear-gradient(180deg, #ef4444, #b91c1c);
-    box-shadow: 0 2px 8px rgba(239,68,68,0.3);
-    margin-left: 8px;
-  }
-  #cancel:hover:not(:disabled) { box-shadow: 0 8px 20px rgba(239,68,68,0.4); }
+  .v3-center { max-width: 520px; margin: 0 auto; }
 
-  /* Rows */
-  .row {
-    display: flex; align-items: center; gap: 10px;
-    margin: 18px 0;
-    flex-wrap: wrap;
-  }
-  .row > label:not(.radio),
-  .row > .mode-label {
-    font-size: 13px; font-weight: 500;
-    color: var(--text-2);
-    min-width: 68px;
-  }
-  .row > span:not(.mode-label) { font-size: 13px; color: var(--text-2); }
+  .v3-header { text-align: center; margin-bottom: 24px; }
+  .v3-logo { font-size: 32px; font-weight: 700; letter-spacing: -0.03em; }
+  .v3-logo .p { color: var(--pink); }
+  .v3-logo .emoji { margin: 0 2px; }
+  .v3-badge { display: inline-block; font-size: 11px; font-weight: 500; background: var(--peach-soft); color: var(--peach); padding: 2px 10px; border-radius: 99px; margin-left: 8px; vertical-align: middle; }
+  .v3-sub { color: var(--fg2); font-size: 14px; margin-top: 6px; }
+  .v3-sub a { color: var(--pink); text-decoration: none; }
+  .v3-toggle-row { display: flex; justify-content: center; margin-top: 12px; }
+  .v3-toggle { background: var(--card); border: 1px solid var(--border); padding: 6px 14px; border-radius: 99px; font: inherit; font-size: 12px; color: var(--fg2); cursor: pointer; }
+  .v3-toggle:hover { background: var(--pink-soft); color: var(--pink); border-color: var(--pink); }
 
-  /* Number / select */
-  input[type=number], select {
-    font: inherit; font-size: 14px;
-    padding: 9px 12px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text);
-    transition: border-color .15s, box-shadow .15s;
-  }
-  input[type=number]:focus, select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
-  }
-  input[type=number] { width: 96px; }
+  .v3-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 24px; margin-bottom: 14px; box-shadow: 0 2px 12px rgba(58,46,36,.04); }
 
-  /* Segmented pill radios */
-  .mode-row { gap: 10px 12px; }
-  [hidden] { display: none !important; }
-  .row-hint {
-    font-size: 12px;
-    color: var(--text-3);
-    margin: -10px 0 4px 0;
-    padding-left: 72px;
-    line-height: 1.5;
-  }
-  /* 跟在 checkbox 後面的 hint:不要套 row 的 label 縮排,直接靠左對齊 */
-  #targetCheckHint { padding-left: 0; margin-top: 2px; }
-  /* 「壓縮」按鈕區隔:加分隔線視覺上區分動作區跟資訊區 */
-  .action-row {
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px solid var(--border);
-  }
-  .radio {
-    position: relative;
-    font-size: 13px; font-weight: 500;
-    cursor: pointer;
-    padding: 7px 14px;
-    border-radius: 999px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    display: inline-flex; align-items: center; gap: 6px;
-    color: var(--text-2);
-    transition: all .15s;
-    user-select: none;
-  }
-  .radio input { position: absolute; opacity: 0; pointer-events: none; }
-  .radio:hover { border-color: var(--border-strong); color: var(--text); }
-  .radio:has(input:checked) {
-    background: var(--accent-soft);
-    color: var(--accent-2);
-    border-color: var(--accent);
-    font-weight: 600;
-  }
+  .v3-drop { display: block; text-align: center; cursor: pointer; border: 2px dashed var(--border2); border-radius: var(--r); padding: 32px 20px; background: linear-gradient(180deg, var(--card) 0%, var(--peach-soft) 100%); transition: border-color .2s, background .2s; margin-bottom: 14px; }
+  .v3-drop:hover, .v3-drop.dragover { border-color: var(--pink); }
+  .v3-drop.ok { border-color: var(--mint); border-style: solid; background: var(--mint-soft); }
+  .v3-drop-icon { font-size: 38px; margin-bottom: 6px; line-height: 1; }
+  .v3-drop-title { font-size: 16px; font-weight: 600; }
+  .v3-drop-hint { font-size: 12px; color: var(--fg3); margin-top: 6px; }
+  .v3-drop-file { font-size: 13px; color: var(--mint); font-weight: 600; margin-top: 6px; word-break: break-all; padding: 0 16px; }
+  /* idle vs ok 切換 */
+  .v3-drop .v3-drop-ok { display: none; }
+  .v3-drop.ok .v3-drop-idle { display: none; }
+  .v3-drop.ok .v3-drop-ok { display: block; }
 
-  /* Primary button */
-  button {
-    font: inherit; font-size: 15px; font-weight: 600;
-    padding: 11px 24px;
-    background: linear-gradient(180deg, var(--accent) 0%, var(--accent-2) 100%);
-    color: white; border: 0;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(201, 100, 66, 0.32), inset 0 1px 0 rgba(255,255,255,0.16);
-    transition: transform .1s, box-shadow .15s, opacity .15s;
-  }
-  button:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 20px rgba(201, 100, 66, 0.4), inset 0 1px 0 rgba(255,255,255,0.2);
-  }
-  button:active:not(:disabled) { transform: translateY(0); }
-  button:disabled {
-    background: var(--border-strong); color: var(--text-3);
-    cursor: not-allowed; box-shadow: none;
-  }
+  .v3-card-h { font-size: 13px; font-weight: 600; color: var(--fg2); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .v3-card-h .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot-pink { background: #e86ca0; }
+  .dot-violet { background: #8b5cf6; }
+  .dot-mint { background: #34d399; }
+  .dot-peach { background: #f4845f; }
 
-  /* Log */
-  #log {
-    margin-top: 20px;
-    padding: 14px 16px;
-    border-radius: var(--radius-sm);
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 12px; line-height: 1.6;
-    white-space: pre-wrap;
-    min-height: 44px;
-    max-height: 320px; overflow-y: auto;
-    color: var(--text-2);
-  }
-  #log:empty::before { content: "就緒。"; color: var(--text-3); }
+  /* 體檢區 */
+  #analysis .stat-line { font-size: 13px; color: var(--fg2); }
+  .v3-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--border); margin: 12px 0; }
+  .v3-bar > div { transition: width .3s; }
+  .v3-bar .compressible { background: var(--pink); }
+  .v3-bar .masks { background: var(--peach); }
+  .v3-bar .special { background: var(--violet); }
+  .v3-bar .text { background: var(--fg3); }
+  .v3-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--fg2); }
+  .v3-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .v3-legend .d { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .v3-rec { font-size: 13px; color: var(--fg2); margin-top: 10px; padding: 10px 14px; background: var(--mint-soft); border-radius: var(--r-sm); }
+  .v3-rec-soft { font-size: 12px; color: var(--fg3); margin-top: 4px; padding-left: 78px; line-height: 1.5; }
 
-  /* Download */
-  #download {
-    display: none;
-    margin-top: 14px;
-    padding: 11px 20px;
-    background: linear-gradient(180deg, var(--success) 0%, var(--success-2) 100%);
-    color: white; text-decoration: none; font-weight: 600;
-    border-radius: var(--radius-sm);
-    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3), inset 0 1px 0 rgba(255,255,255,0.15);
-    transition: transform .1s, box-shadow .15s;
-  }
-  #download:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
-  }
+  /* 設定區 */
+  .v3-ctrl { display: flex; align-items: center; gap: 14px; margin: 10px 0; flex-wrap: wrap; }
+  .v3-ctrl-label { font-size: 13px; font-weight: 500; color: var(--fg2); min-width: 60px; }
+  .v3-pills { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+  .v3-pill { padding: 7px 14px; border-radius: 99px; border: 1px solid var(--border); background: var(--card); font: inherit; font-size: 13px; color: var(--fg2); cursor: pointer; transition: all .15s; }
+  .v3-pill:hover { border-color: var(--pink); color: var(--pink); }
+  .v3-pill.on { background: var(--pink); color: #fff; border-color: var(--pink); font-weight: 600; }
+  .v3-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; user-select: none; }
+  .v3-chk input { accent-color: var(--pink); width: 16px; height: 16px; cursor: pointer; }
+  .v3-num { font: inherit; font-size: 14px; width: 80px; padding: 7px 10px; border: 1px solid var(--border2); border-radius: var(--r-sm); background: var(--card); color: var(--fg); }
+  .v3-num:disabled { opacity: .35; cursor: not-allowed; }
 
-  /* Warning */
-  .warn {
-    margin-top: 16px;
-    font-size: 12.5px; line-height: 1.6;
-    color: var(--text-2);
-    background: var(--warn-soft);
-    padding: 12px 14px;
-    border-radius: var(--radius-sm);
-    border-left: 3px solid var(--warn);
-  }
-  .warn strong { color: var(--text); }
+  /* 主按鈕 */
+  .v3-go { display: block; width: 100%; padding: 14px; border: 0; border-radius: var(--r-sm); background: linear-gradient(135deg, var(--pink), var(--peach)); color: #fff; font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(232,108,160,.25); transition: transform .1s, box-shadow .15s, opacity .15s; margin-bottom: 10px; }
+  .v3-go:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(232,108,160,.35); }
+  .v3-go:disabled { background: var(--border); color: var(--fg3); box-shadow: none; cursor: not-allowed; }
+  .v3-btn-row { display: flex; gap: 10px; margin-top: 0; margin-bottom: 14px; }
+  .v3-sec { flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--card); font: inherit; font-size: 13px; color: var(--fg2); cursor: pointer; transition: all .15s; }
+  .v3-sec:hover { border-color: var(--pink); color: var(--pink); }
 
-  /* 更新記錄(折疊) */
-  .changelog {
-    margin-top: 20px;
-    font-size: 12.5px;
-    color: var(--text-3);
-  }
-  .changelog summary {
-    cursor: pointer;
-    user-select: none;
-    padding: 6px 0;
-    color: var(--text-2);
-    list-style: none;
-  }
-  .changelog summary::-webkit-details-marker { display: none; }
-  .changelog summary::before {
-    content: '▸';
-    display: inline-block;
-    margin-right: 6px;
-    transition: transform 0.15s ease;
-  }
-  .changelog[open] summary::before { transform: rotate(90deg); }
-  .changelog-body {
-    margin-top: 8px;
-    padding: 12px 16px;
-    background: var(--surface-2);
-    border-radius: var(--radius-sm);
-    line-height: 1.7;
-  }
-  .changelog .cl-ver {
-    margin-top: 10px;
-    color: var(--text-2);
-    font-size: 13px;
-  }
-  .changelog .cl-ver:first-child { margin-top: 0; }
-  .changelog ul {
-    margin: 4px 0 8px 18px;
-    padding: 0;
-  }
-  .changelog ul li { margin: 2px 0; }
+  /* 進度 */
+  .v3-progress { margin-top: 8px; }
+  .v3-pbar-track { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+  .v3-pbar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--pink), var(--peach)); transition: width .25s linear; }
+  .v3-pct-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; font-size: 12px; color: var(--fg2); }
+  .v3-pct-big { font-size: 28px; font-weight: 700; color: var(--pink); }
+  .v3-log { font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--fg3); max-height: 160px; overflow-y: auto; white-space: pre-wrap; margin-top: 10px; padding: 10px 12px; background: var(--bg); border-radius: var(--r-sm); line-height: 1.5; }
 
-  /* Mascots 場景:天空 + 海 + 沙灘,壓縮中兼任進度條 */
+  /* 結果卡 */
+  .v3-result-card { background: linear-gradient(135deg, var(--mint-soft), #f0fdf9); border: 2px solid var(--mint); }
+  .v3-result-h { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
+  .v3-result-h .emoji { font-size: 26px; margin-right: 6px; }
+  .v3-ba-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; margin: 14px 0; }
+  .v3-ba-card { padding: 14px; border-radius: var(--r-sm); text-align: center; }
+  .v3-ba-card.before { background: var(--peach-soft); }
+  .v3-ba-card.after { background: var(--mint-soft); }
+  .v3-ba-card .lab { font-size: 11px; color: var(--fg3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+  .v3-ba-card .val { font-size: 24px; font-weight: 700; }
+  .v3-ba-arrow { font-size: 22px; color: var(--mint); text-align: center; }
+  .v3-savings { text-align: center; font-size: 20px; font-weight: 700; color: var(--mint); margin: 4px 0 12px; }
+  .v3-dl { display: block; text-align: center; padding: 12px; border-radius: var(--r-sm); background: var(--mint); color: #fff !important; text-decoration: none; font-weight: 700; font-size: 15px; }
+  .v3-dl:hover { background: #2bb888; }
+
+  /* 錯誤卡 */
+  .v3-error { padding: 14px 16px; border-radius: var(--r-sm); background: #fef2f2; border: 1px solid #fca5a5; color: var(--fg); font-size: 13px; line-height: 1.6; }
+  .v3-error strong { color: var(--peach); display: block; margin-bottom: 4px; }
+
+  /* FAQ */
+  .v3-faq details { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .v3-faq details:last-child { border-bottom: 0; }
+  .v3-faq summary { cursor: pointer; font-weight: 600; list-style: none; font-size: 14px; color: var(--fg); padding: 4px 0; }
+  .v3-faq summary::marker, .v3-faq summary::-webkit-details-marker { display: none; }
+  .v3-faq summary::before { content: '▸'; display: inline-block; margin-right: 8px; color: var(--fg3); transition: transform .15s; }
+  .v3-faq details[open] summary::before { transform: rotate(90deg); }
+  .v3-faq p { margin: 6px 0 0 22px; color: var(--fg2); font-size: 13px; line-height: 1.6; }
+
+  /* 更新記錄(包成 v3-card) */
+  .v3-changelog { padding: 16px 24px; }
+  .v3-changelog summary { cursor: pointer; user-select: none; font-size: 13px; font-weight: 600; color: var(--fg2); list-style: none; padding: 6px 0; }
+  .v3-changelog summary::marker, .v3-changelog summary::-webkit-details-marker { display: none; }
+  .v3-changelog summary::before { content: '▸'; display: inline-block; margin-right: 8px; transition: transform .15s; }
+  .v3-changelog[open] summary::before { transform: rotate(90deg); }
+  .v3-changelog .changelog-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12.5px; line-height: 1.7; color: var(--fg3); }
+  .v3-changelog .cl-ver { margin-top: 10px; color: var(--fg2); font-size: 13px; }
+  .v3-changelog .cl-ver:first-child { margin-top: 0; }
+  .v3-changelog ul { margin: 4px 0 8px 18px; padding: 0; }
+  .v3-changelog ul li { margin: 2px 0; }
+
+  /* Codec status banner (only on error) */
+  #codecStatus { font-size: 12px; padding: 8px 12px; margin: -6px 0 14px; border-radius: var(--r-sm); }
+  #codecStatus:empty { display: none; }
+
+  /* ── Phase visibility ──────────────────────────────────────────────── */
+  .analyzed-only, .compressing-only, .done-only, .error-only { display: none; }
+  .v3-root[data-phase="analyzed"] .analyzed-only,
+  .v3-root[data-phase="compressing"] .analyzed-only,
+  .v3-root[data-phase="done"] .analyzed-only,
+  .v3-root[data-phase="error"] .analyzed-only { display: block; }
+  .v3-root[data-phase="compressing"] .compressing-only { display: block; }
+  .v3-root[data-phase="done"] .done-only { display: block; }
+  .v3-root[data-phase="error"] .error-only { display: block; }
+  /* 壓縮中按鈕變 disabled */
+  .v3-root[data-phase="compressing"] .v3-go { opacity: .5; cursor: not-allowed; pointer-events: none; }
+
+  /* ── Mascot scene (compact, 嵌在 progress card 裡) ────────────────── */
   .mascots {
     --progress: 0;
+    --shark-pos: 0;
+    --dino-pos: 0;
+    --creep-duration: 30s;
     position: relative;
-    height: 110px;
-    margin-top: 28px;
+    width: 100%;
+    height: 90px;
+    border-radius: var(--r-sm);
     overflow: hidden;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: linear-gradient(
-      to bottom,
-      #e0f2fe 0%, #bae6fd 34%,
-      #7dd3fc 34%, #0ea5e9 72%,
-      #fef3c7 72%, #fde68a 100%
-    );
-    transition: filter .4s;
+    background:
+      linear-gradient(to bottom,
+        #e0f2fe 0%, #bae6fd 32%,
+        #7dd3fc 32%, #0ea5e9 70%,
+        #fef3c7 70%, #fde68a 100%);
+    user-select: none;
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif;
   }
-  .mascots::before {
-    /* 進度條(壓縮時顯示在底部) */
-    content: "";
-    position: absolute; left: 0; bottom: 0; height: 3px;
-    width: calc(var(--progress) * 1%);
-    background: linear-gradient(90deg, var(--accent), var(--accent-2));
-    opacity: 0;
-    transition: width .3s ease-out, opacity .3s;
-  }
-  .mascots.busy::before { opacity: 0.9; }
-  .mascots::after {
-    /* 海面反光水平線 */
-    content: "";
-    position: absolute; left: 0; right: 0; top: 34%;
-    height: 2px;
-    background: repeating-linear-gradient(90deg,
-      rgba(255,255,255,0.8) 0 8px, transparent 8px 14px);
-    opacity: 0.6;
-  }
-  @media (prefers-color-scheme: dark) {
-    .mascots {
-      background: linear-gradient(to bottom,
-        #1e3a5f 0%, #2563eb 34%,
-        #0284c7 34%, #075985 72%,
-        #78716c 72%, #57534e 100%);
-    }
-  }
+  .mascots .scene { position: absolute; }
+  .mascots .sun { top: 4px; right: 12px; font-size: 18px; animation: sunBob 4s ease-in-out infinite; }
+  .mascots .cloud { top: 6px; font-size: 16px; animation: floatCloud 38s linear infinite; }
+  .mascots .cloud-2 { top: 14px; font-size: 12px; animation-delay: -22s; animation-duration: 52s; }
 
-  .scene { position: absolute; user-select: none; pointer-events: none; }
-  .scene.sun {
-    top: 4px; right: 14px;
-    font-size: 22px;
-    animation: sunBob 4s ease-in-out infinite;
-  }
-  .scene.cloud {
-    font-size: 18px;
-    opacity: 0.95;
-    filter: brightness(1.15);
-    top: 8px;
-    animation: floatCloud 38s linear infinite;
-  }
-  .scene.cloud-2 { top: 16px; font-size: 14px; animation-delay: -22s; animation-duration: 52s; }
-
-  /* Wrapper 結構:.mascot 外層負責水平位置(transform: translateX),
-     .m-inner 負責 bob / cheer / winnerCelebrate 等垂直動畫。
-     兩層 transform 獨立,不會互相覆蓋。 */
-  .mascot {
+  .mascots .mascot {
     position: absolute;
     line-height: 1;
+    font-size: 22px;
+    transition: transform 0.4s linear;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,.18));
     will-change: transform;
-    user-select: none;
-    font-size: 26px;
-    left: 0;
-    transform: translateX(6px); /* idle 起點 */
-    transition: transform .5s ease-out;
   }
-  .mascot.shark { bottom: 34px; }
-  .mascot.dino { bottom: 6px; }
-  .m-inner {
+  .mascots .shark { bottom: 28px; left: 0; transform: translateX(calc(var(--shark-pos) * 1%)); }
+  .mascots .dino { bottom: 4px; left: 0; transform: translateX(calc(var(--dino-pos) * 1%)); }
+  .mascots.creeping .shark, .mascots.creeping .dino { transition: transform var(--creep-duration) linear; }
+  .mascots .m-inner {
     display: inline-block;
-    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.18));
-    animation: idleBob 2.2s ease-in-out infinite alternate;
+    animation: bob 2.2s ease-in-out infinite alternate;
   }
-  .mascot.dino .m-inner {
-    animation: idleBob 2.6s ease-in-out infinite alternate;
-    animation-delay: -1.3s;
-  }
-  @keyframes idleBob {
-    0%   { transform: translateY(0); }
-    100% { transform: translateY(-3px); }
-  }
-  /* 壓縮中:外層 .mascot 的 transform: translateX 跟著進度走,
-     compositor thread 跑,不受 JS block 影響。
-     標準 transition 2s linear:單步進度連續插值。 */
-  .mascots.busy .mascot.shark {
-    transform: translateX(var(--shark-tx, 6px));
-    transition: transform 2s linear;
-  }
-  .mascots.busy .mascot.dino {
-    transform: translateX(var(--dino-tx, 6px));
-    transition: transform 2s linear;
-  }
-  .mascots.busy .m-inner {
-    animation: bob 0.6s ease-in-out infinite alternate;
-  }
-  .mascots.busy .mascot.dino .m-inner {
-    animation-delay: -0.3s;
-  }
-  /* creeping:進 save() 前,transition 拉長,compositor 一路插到 95% 位置 */
-  .mascots.busy.creeping .mascot.shark,
-  .mascots.busy.creeping .mascot.dino {
-    transition: transform var(--creep-duration, 15s) linear;
-  }
-  /* 完成:保留 --shark-tx 當前位置,讓 declareWinner 設 100% 後接得上 */
-  .mascots.done .mascot.shark {
-    transform: translateX(var(--shark-tx, 6px));
-  }
-  .mascots.done .mascot.dino {
-    transform: translateX(var(--dino-tx, 6px));
-  }
-  .mascots.done .m-inner {
-    animation: cheer 0.6s ease-in-out 3;
-  }
-  /* 冠軍 — 金光 + 放大 + 旋轉歡呼(動畫在 .m-inner,光暈/字級在 .mascot) */
-  .mascots.shark-won .mascot.shark,
-  .mascots.dino-won .mascot.dino {
-    z-index: 2;
-    font-size: 32px;
-  }
-  .mascots.shark-won .mascot.shark .m-inner,
-  .mascots.dino-won .mascot.dino .m-inner {
-    animation: winnerCelebrate 0.5s ease-in-out infinite alternate;
-    filter: drop-shadow(0 0 12px #fbbf24) drop-shadow(0 2px 3px rgba(0,0,0,0.25));
-  }
-  .mascots.shark-won .mascot.shark::after,
-  .mascots.dino-won .mascot.dino::after {
-    content: "🏆";
-    position: absolute;
-    top: -22px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 18px;
-    filter: none;
-    animation: trophyBounce 0.5s ease-in-out infinite alternate;
-  }
-  @keyframes winnerCelebrate {
-    0%   { transform: scaleX(1) translateY(0) rotate(-6deg); }
-    100% { transform: scaleX(1) translateY(-8px) rotate(6deg); }
-  }
-  @keyframes trophyBounce {
-    0%   { transform: translate(-50%, 0) scale(1); }
-    100% { transform: translate(-50%, -4px) scale(1.15); }
-  }
-  .mascots.busy .scene.sun     { animation-duration: 1.2s; }
-  .mascots.done { filter: saturate(1.3) brightness(1.05); }
-  .mascots.done .mascot { animation: cheer 0.6s ease-in-out 3; }
-  .mascots.done::before {
-    content: "🎉";
-    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
-    font-size: 24px;
-    animation: cheer 0.6s ease-in-out 3;
-  }
+  .mascots .dino .m-inner { animation-duration: 2.6s; animation-delay: -1.3s; }
 
-  @keyframes swim {
-    0%   { left: -40px;                transform: scaleX(1)  translateY(0); }
-    48%  { left: calc(100% + 10px);    transform: scaleX(1)  translateY(-2px); }
-    50%  { left: calc(100% + 10px);    transform: scaleX(-1) translateY(0); }
-    98%  { left: -40px;                transform: scaleX(-1) translateY(2px); }
-    100% { left: -40px;                transform: scaleX(1)  translateY(0); }
-  }
-  @keyframes walk {
-    0%,100% { left: calc(100% + 10px); transform: scaleX(-1) translateY(0); }
-    10%     { left: 92%;               transform: scaleX(-1) translateY(-4px); }
-    20%     { left: 80%;               transform: scaleX(-1) translateY(0); }
-    48%     { left: -40px;             transform: scaleX(-1) translateY(0); }
-    50%     { left: -40px;             transform: scaleX(1)  translateY(0); }
-    60%     { left: 20%;               transform: scaleX(1)  translateY(-4px); }
-    70%     { left: 40%;               transform: scaleX(1)  translateY(0); }
-    98%     { left: calc(100% + 10px); transform: scaleX(1)  translateY(0); }
-  }
-  @keyframes cheer {
-    0%,100% { transform: translateY(0) scale(1); }
-    50%     { transform: translateY(-14px) scale(1.25); }
-  }
-  @keyframes bob {
-    0%   { transform: scaleX(1) translateY(0); }
-    100% { transform: scaleX(1) translateY(-3px); }
-  }
-  @keyframes sunBob {
-    0%,100% { transform: translateY(0) rotate(0deg); }
-    50%     { transform: translateY(-2px) rotate(20deg); }
-  }
-  @keyframes floatCloud {
-    0%   { left: -40px; }
-    100% { left: calc(100% + 20px); }
-  }
+  .mascots.shark-won .shark .m-inner { animation: celebrate 0.5s ease-in-out infinite alternate; filter: drop-shadow(0 0 12px #fbbf24); }
+  .mascots.dino-won .dino .m-inner { animation: celebrate 0.5s ease-in-out infinite alternate; filter: drop-shadow(0 0 12px #fbbf24); }
 
+  @keyframes sunBob { 0%,100% { transform: rotate(0); } 50% { transform: rotate(20deg); } }
+  @keyframes floatCloud { 0% { left: -40px; } 100% { left: calc(100% + 20px); } }
+  @keyframes bob { 0% { transform: translateY(0); } 100% { transform: translateY(-3px); } }
+  @keyframes celebrate { 0% { transform: translateY(0) rotate(-6deg); } 100% { transform: translateY(-6px) rotate(6deg); } }
+
+  /* ── Dark mode ────────────────────────────────────────────────────── */
+  .v3-root.dark {
+    --bg: #1c1714; --card: #271f1a; --border: #3a2e24; --border2: #4a3d30;
+    --fg: #f5efe6; --fg2: #bfb0a0; --fg3: #7a6b5c;
+    --pink-soft: #2d1f26; --peach-soft: #2d211c; --mint-soft: #1a2620; --violet-soft: #20192d;
+  }
+  .v3-root.dark .v3-drop { background: linear-gradient(180deg, var(--card), #2a1f18); }
+  .v3-root.dark .v3-log { background: #1a1510; }
+  body:has(.v3-root.dark) { background: #1c1714; }
+
+  /* ── Mobile tuning ────────────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    .v3-root { padding: 20px 12px 32px; }
+    .v3-card { padding: 18px; }
+    .v3-logo { font-size: 26px; }
+    .v3-ba-grid { grid-template-columns: 1fr; }
+    .v3-ba-arrow { transform: rotate(90deg); }
+  }
 </style>
 </head>
 <body>
 
-<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.3.4</span></h1>
-<div class="sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
+<div class="v3-root" id="v3root" data-phase="idle">
+  <div class="v3-center">
 
-<label id="drop" for="file">
-  <div><strong>點這裡選 PDF</strong>（或把檔案拖進來）</div>
-  <div class="hint">一次一個檔，檔案不會上傳</div>
-</label>
-<input type="file" id="file" accept="application/pdf">
-<div id="fileInfo"></div>
-<div id="codecStatus" style="font-size:11px;color:#888;margin:4px 0;"></div>
+    <!-- Header -->
+    <div class="v3-header">
+      <div class="v3-logo">
+        <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
+        <span class="v3-badge">v1.4.0</span>
+      </div>
+      <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
+      <div class="v3-toggle-row">
+        <button class="v3-toggle" id="darkToggle">🌙 深色模式</button>
+      </div>
+    </div>
 
-<!-- 目標類型 radio:暫時藏起來,只走「縮到指定大小」 -->
-<div class="row mode-row" style="display:none">
-  <span class="mode-label">目標</span>
-  <label class="radio"><input type="radio" name="tgtType" value="size" checked> 縮到指定大小</label>
-  <label class="radio"><input type="radio" name="tgtType" value="view"> 依裝置挑畫質</label>
-</div>
-<div class="row-hint" id="tgtHint" style="display:none"></div>
+    <!-- Drop zone -->
+    <label class="v3-drop" id="drop" for="file">
+      <div class="v3-drop-idle">
+        <div class="v3-drop-icon">📄</div>
+        <div class="v3-drop-title">點這裡選 PDF</div>
+        <div class="v3-drop-hint">或把檔案拖進來 · 一次一個檔 · 檔案不會上傳</div>
+      </div>
+      <div class="v3-drop-ok">
+        <div class="v3-drop-icon">✅</div>
+        <div class="v3-drop-title">已選好</div>
+        <div class="v3-drop-file" id="fileInfo">—</div>
+      </div>
+    </label>
+    <input type="file" id="file" accept="application/pdf">
 
-<div class="row" id="rowSize">
-  <label for="useTargetSize" style="cursor:pointer; user-select:none; display:inline-flex; align-items:center; gap:4px;">
-    <input type="checkbox" id="useTargetSize">
-    限制檔案大小:
-  </label>
-  <input type="number" id="target" min="0.1" step="0.1" value="5" disabled>
-  <span>MB</span>
-</div>
-<div class="row-hint" id="targetCheckHint">未勾選 = 自動找畫質與大小的最佳平衡</div>
+    <!-- Codec status banner (only when引擎載入失敗) -->
+    <div id="codecStatus"></div>
 
-<div class="row" id="rowView" style="display:none">
-  <label for="view">主要在哪看</label>
-  <select id="view">
-    <option value="mobile">手機</option>
-    <option value="720p">筆電 / 小螢幕</option>
-    <option value="1080p" selected>一般電腦螢幕</option>
-    <option value="1440p">高解析螢幕</option>
-    <option value="4k">4K 螢幕</option>
-  </select>
-</div>
+    <!-- 體檢卡(file analyzed 後出現) -->
+    <div class="v3-card analyzed-only">
+      <div class="v3-card-h"><span class="dot dot-pink"></span>檔案體檢</div>
+      <div id="analysis"></div>
+    </div>
 
-<div class="row mode-row" id="rowViewQuality" style="display:none">
-  <span class="mode-label">畫質</span>
-  <label class="radio"><input type="radio" name="vq" value="low"> 低(最小檔)</label>
-  <label class="radio"><input type="radio" name="vq" value="std" checked> 標準</label>
-  <label class="radio"><input type="radio" name="vq" value="high"> 高(最清晰)</label>
-</div>
+    <!-- 設定卡 -->
+    <div class="v3-card analyzed-only">
+      <div class="v3-card-h"><span class="dot dot-violet"></span>設定</div>
 
-<div class="row mode-row">
-  <span class="mode-label">壓縮方式</span>
-  <label class="radio"><input type="radio" name="mode" value="preserve" checked> 文字仍可複製(推薦)</label>
-  <label class="radio"><input type="radio" name="mode" value="raster"> 整頁轉圖片(檔案最小)</label>
-</div>
+      <!-- 模式 pills -->
+      <div class="v3-ctrl">
+        <span class="v3-ctrl-label">模式</span>
+        <div class="v3-pills" id="modePills">
+          <button type="button" class="v3-pill on" data-mode="preserve">文字可複製 ✓</button>
+          <button type="button" class="v3-pill" data-mode="raster">轉圖片(更小)</button>
+        </div>
+      </div>
 
-<div class="row mode-row" hidden>
-  <span class="mode-label">圖片編碼</span>
-  <label class="radio"><input type="radio" name="codec" value="smart" checked> Smart 自動(全跑取最小)</label>
-</div>
+      <!-- 大小限制 -->
+      <div class="v3-ctrl" id="rowSize">
+        <span class="v3-ctrl-label">大小</span>
+        <label class="v3-chk">
+          <input type="checkbox" id="useTargetSize">
+          限制大小
+        </label>
+        <input type="number" class="v3-num" id="target" min="0.1" step="0.1" value="5" disabled>
+        <span style="font-size:13px;color:var(--fg3)">MB</span>
+      </div>
+      <div id="targetCheckHint" class="v3-rec-soft">未勾選 = 自動找畫質與大小的最佳平衡</div>
 
-<div class="row action-row">
-  <button id="go" disabled>壓縮</button>
-  <button id="cancel" hidden>取消</button>
-</div>
+      <!-- Hidden controls for legacy compression JS -->
+      <div hidden>
+        <input type="radio" name="tgtType" value="size" checked>
+        <input type="radio" name="tgtType" value="view">
+        <input type="radio" name="codec" value="smart" checked>
+        <input type="radio" name="mode" value="preserve" checked>
+        <input type="radio" name="mode" value="raster">
+        <input type="radio" name="vq" value="low">
+        <input type="radio" name="vq" value="std" checked>
+        <input type="radio" name="vq" value="high">
+        <select id="view"><option value="1080p" selected>一般電腦螢幕</option></select>
+        <div id="rowView"></div>
+        <div id="rowViewQuality"></div>
+        <div id="tgtHint"></div>
+      </div>
+    </div>
 
-<!-- 檔案分析卡放壓縮按鈕「下面」:這樣按鈕位置不會因為檔案大小不同而上下飄 -->
-<div id="analysis"></div>
+    <!-- 開始壓縮按鈕 -->
+    <button class="v3-go analyzed-only" id="go" disabled>🚀 開始壓縮</button>
+    <div class="v3-btn-row analyzed-only">
+      <button type="button" class="v3-sec" id="resetBtn">換檔案</button>
+      <button type="button" class="v3-sec" id="cancel" hidden>取消壓縮中…</button>
+    </div>
 
-<div id="log"></div>
-<a id="download" download>下載結果</a>
+    <!-- 壓縮中卡 -->
+    <div class="v3-card compressing-only">
+      <div class="v3-pct-row">
+        <div class="v3-card-h" style="margin:0">壓縮中</div>
+        <span class="v3-pct-big" id="pctBig">0%</span>
+      </div>
+      <div class="v3-progress">
+        <div class="v3-pbar-track"><div class="v3-pbar-fill" id="pbarFill" style="width:0%"></div></div>
+      </div>
+      <div style="margin:12px 0">
+        <!-- Mascot scene (compact) - 既有 #mascots 結構保留 -->
+        <div class="mascots" id="mascots" aria-hidden="true">
+          <span class="scene sun">☀️</span>
+          <span class="scene cloud cloud-1">☁️</span>
+          <span class="scene cloud cloud-2">☁️</span>
+          <span class="mascot shark"><span class="m-inner">🦈</span></span>
+          <span class="mascot dino"><span class="m-inner">🦖</span></span>
+        </div>
+      </div>
+      <div class="v3-log" id="log">就緒。</div>
+    </div>
 
-<div class="warn" id="warnMsg"></div>
+    <!-- 結果卡 -->
+    <div class="v3-card v3-result-card done-only">
+      <div class="v3-result-h"><span class="emoji">🎉</span>壓縮完成!</div>
+      <div class="v3-ba-grid">
+        <div class="v3-ba-card before">
+          <div class="lab">壓縮前</div>
+          <div class="val" id="beforeMB">—</div>
+        </div>
+        <div class="v3-ba-arrow">→</div>
+        <div class="v3-ba-card after">
+          <div class="lab">壓縮後</div>
+          <div class="val" id="afterMB">—</div>
+        </div>
+      </div>
+      <div class="v3-savings" id="savingsPct">—</div>
+      <a class="v3-dl" id="download" download>⬇ 下載結果</a>
+      <button type="button" class="v3-sec" style="width:100%;margin-top:10px" id="resetBtn2">再壓一份</button>
+    </div>
 
-<details class="changelog">
-  <summary>📋 更新記錄</summary>
-  <div class="changelog-body">
-    <div class="cl-ver"><strong>v1.3.4</strong> · 2026-04-30</div>
-    <ul>
-      <li>JPEG 2000 編碼重新啟用 — 修了背後讓圖片在某些觀看器破碎的根本原因(JS 端餵給編碼器的色彩通道排列方式錯誤),不再依賴關閉它來迴避</li>
-      <li>JPX 加保護機制:只在大圖 + 中高畫質才開,輸出明顯異常會自動退回 MozJPEG</li>
-    </ul>
-    <div class="cl-ver"><strong>v1.3.3</strong> · 2026-04-30</div>
-    <ul>
-      <li>檔案分析卡搬到「壓縮」按鈕下方,按鈕位置從此固定不再飄</li>
-    </ul>
-    <div class="cl-ver"><strong>v1.3.2</strong> · 2026-04-30</div>
-    <ul>
-      <li>修正勾選提示文字</li>
-    </ul>
-    <div class="cl-ver"><strong>v1.3.1</strong> · 2026-04-30</div>
-    <ul>
-      <li>修正某些 PDF 在 macOS Preview 等嚴格觀看器渲染破碎的問題</li>
-      <li>自動最佳化模式探測階段速度約快 40-50%</li>
-    </ul>
-    <div class="cl-ver"><strong>v1.3.0</strong> · 2026-04-30</div>
-    <ul>
-      <li>修正某些圖片在 macOS Preview 顯示空白的問題(透明度遮罩處理錯誤)</li>
-      <li>「自動最佳化」改成跑兩個畫質版本後逐張挑最佳合併</li>
-    </ul>
-    <div class="cl-ver"><strong>v1.2.0</strong> · 2026-04-30</div>
-    <ul>
-      <li>新增「自動最佳化」模式 — 不勾「限制檔案大小」就自動找畫質與大小的平衡點</li>
-      <li>小圖保護:短邊 &lt; 300px 的圖不再縮,避免出現馬賽克</li>
-      <li>主畫面文字全面去技術術語</li>
-      <li>緩解大檔壓縮時瀏覽器「未回應」對話框</li>
-    </ul>
-    <div class="cl-ver"><strong>v1.1.0</strong> · 2026-04-29</div>
-    <ul>
-      <li>觀看解析度模式補齊智慧分配</li>
-    </ul>
-    <div class="cl-ver"><strong>v1.0.0</strong> · 2026-04-24</div>
-    <ul>
-      <li>首次上線到 GitHub Pages</li>
-      <li>智慧壓縮 + 影像去重</li>
-      <li>離線可用 — 雙擊 index.html 即可</li>
-    </ul>
+    <!-- 錯誤卡 -->
+    <div class="v3-card v3-error error-only">
+      <strong>⚠ 壓縮失敗</strong>
+      <div id="warnMsg"></div>
+      <button type="button" class="v3-sec" style="width:100%;margin-top:10px" id="resetBtn3">重新試試</button>
+    </div>
+
+    <!-- FAQ -->
+    <div class="v3-card">
+      <div class="v3-card-h"><span class="dot dot-mint"></span>常見問題</div>
+      <div class="v3-faq">
+        <details open>
+          <summary>我的檔案會上傳嗎?</summary>
+          <p>不會。所有壓縮都在你的瀏覽器裡完成，檔案從頭到尾不離開你的電腦。網路斷掉也照樣能用。</p>
+        </details>
+        <details>
+          <summary>壓縮過的 PDF 還能複製文字嗎?</summary>
+          <p>「文字可複製」模式會保留原本的文字層，只壓縮裡面的圖片；「轉圖片」模式會把每一頁變成一張圖，檔案最小但無法選取文字。</p>
+        </details>
+        <details>
+          <summary>為什麼有些檔案壓不太下去?</summary>
+          <p>如果 PDF 裡主要是文字而不是圖片(例如純文字報告)，原本就已經很小，可壓縮的空間有限。掃描或圖片密集的檔案壓縮效果最好。</p>
+        </details>
+        <details>
+          <summary>支援多大的檔案?</summary>
+          <p>理論上沒有上限，但大檔(超過 200 MB)需要較多記憶體，建議在桌機上跑。手機也可以用，但速度較慢。</p>
+        </details>
+        <details>
+          <summary>用了什麼技術?</summary>
+          <p>瀏覽器原生 + WebAssembly：pdf-lib、pdf.js、MozJPEG、JPEG 2000 (OpenJPEG)、OxiPNG。每張圖會跑多種編碼器賽馬，挑最小的。</p>
+        </details>
+      </div>
+    </div>
+
+    <!-- 更新記錄(摺疊) -->
+    <details class="v3-card v3-changelog">
+      <summary>📋 更新記錄</summary>
+      <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.4.0</strong> · 2026-04-30</div>
+        <ul>
+          <li>整體版面重新設計 — 主視覺粉橘漸層、清楚的階段分區、深色模式</li>
+          <li>壓縮完成後顯示「壓縮前 → 壓縮後」對比卡與省了多少 %</li>
+          <li>常見問題區塊</li>
+        </ul>
+        <div class="cl-ver"><strong>v1.3.4</strong> · 2026-04-30</div>
+        <ul>
+          <li>JPEG 2000 編碼重新啟用 — 修了背後讓圖片在某些觀看器破碎的根本原因</li>
+        </ul>
+        <div class="cl-ver"><strong>v1.3.3</strong> · 2026-04-30</div>
+        <ul>
+          <li>檔案分析卡搬到「壓縮」按鈕下方,按鈕位置從此固定不再飄</li>
+        </ul>
+        <div class="cl-ver"><strong>v1.3.1</strong> · 2026-04-30</div>
+        <ul>
+          <li>修正某些 PDF 在 macOS Preview 等嚴格觀看器渲染破碎的問題</li>
+          <li>自動最佳化模式探測階段速度約快 40-50%</li>
+        </ul>
+        <div class="cl-ver"><strong>v1.3.0</strong> · 2026-04-30</div>
+        <ul>
+          <li>修正某些圖片在 macOS Preview 顯示空白的問題</li>
+          <li>「自動最佳化」改成跑兩個畫質版本後逐張挑最佳合併</li>
+        </ul>
+        <div class="cl-ver"><strong>v1.2.0</strong> · 2026-04-30</div>
+        <ul>
+          <li>新增「自動最佳化」模式</li>
+          <li>小圖保護:短邊 &lt; 300px 的圖不再縮,避免出現馬賽克</li>
+          <li>主畫面文字全面去技術術語</li>
+        </ul>
+        <div class="cl-ver"><strong>v1.1.0</strong> · 2026-04-29</div>
+        <ul>
+          <li>觀看解析度模式補齊智慧分配</li>
+        </ul>
+        <div class="cl-ver"><strong>v1.0.0</strong> · 2026-04-24</div>
+        <ul>
+          <li>首次上線到 GitHub Pages</li>
+          <li>智慧壓縮 + 影像去重</li>
+          <li>離線可用 — 雙擊 index.html 即可</li>
+        </ul>
+      </div>
+    </details>
+
   </div>
-</details>
-
-<div class="mascots" id="mascots" aria-hidden="true">
-  <span class="scene sun">☀️</span>
-  <span class="scene cloud cloud-1">☁️</span>
-  <span class="scene cloud cloud-2">☁️</span>
-  <span class="mascot shark"><span class="m-inner">🦈</span></span>
-  <span class="mascot dino"><span class="m-inner">🦖</span></span>
 </div>
+
+<!-- ── V3 UI controller (bridges new UI ↔ existing compression JS) ────── -->
+<script>
+(() => {
+  const $root = document.getElementById('v3root');
+  const setPhase = (p) => $root.dataset.phase = p;
+
+  // 暗色切換
+  const $darkBtn = document.getElementById('darkToggle');
+  $darkBtn.addEventListener('click', () => {
+    const dark = $root.classList.toggle('dark');
+    $darkBtn.textContent = dark ? '☀ 淺色模式' : '🌙 深色模式';
+  });
+
+  // 模式 pills(同步隱藏 radio,讓既有 JS querySelector 仍能讀)
+  document.getElementById('modePills').addEventListener('click', (e) => {
+    const btn = e.target.closest('.v3-pill');
+    if (!btn) return;
+    document.querySelectorAll('#modePills .v3-pill').forEach(b => b.classList.toggle('on', b === btn));
+    const mode = btn.dataset.mode;
+    document.querySelectorAll('input[name=mode]').forEach(r => r.checked = (r.value === mode));
+    if (window.__userPickedMode !== undefined) window.__userPickedMode = true;
+    // 派 change event 讓既有 updateWarn 等 listener 觸發
+    document.querySelector(`input[name=mode][value=${mode}]`).dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  // 換檔/再壓一份 按鈕
+  ['resetBtn', 'resetBtn2', 'resetBtn3'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', () => {
+      // 重置
+      const $file = document.getElementById('file');
+      $file.value = '';
+      window.currentFile = null;
+      document.getElementById('drop').classList.remove('ok');
+      document.getElementById('fileInfo').textContent = '—';
+      document.getElementById('go').disabled = true;
+      document.getElementById('log').textContent = '就緒。';
+      document.getElementById('analysis').innerHTML = '';
+      setPhase('idle');
+    });
+  });
+
+  // 提供給既有 JS 用的 phase API
+  window.ChompUI = {
+    setPhase,
+    setProgressDisplay(pct) {
+      document.getElementById('pctBig').textContent = Math.round(pct) + '%';
+      document.getElementById('pbarFill').style.width = pct + '%';
+    },
+    showResult(beforeBytes, afterBytes, downloadUrl, fileName) {
+      const fmt = (b) => (b / 1024 / 1024).toFixed(1) + ' MB';
+      document.getElementById('beforeMB').textContent = fmt(beforeBytes);
+      document.getElementById('afterMB').textContent = fmt(afterBytes);
+      const pct = Math.round((1 - afterBytes / beforeBytes) * 100);
+      document.getElementById('savingsPct').textContent = pct > 0 ? `省了 ${pct}% 🎊` : '已是最小';
+      const $dl = document.getElementById('download');
+      $dl.href = downloadUrl;
+      $dl.download = fileName;
+      setPhase('done');
+    },
+    showError(msg) {
+      document.getElementById('warnMsg').textContent = msg;
+      setPhase('error');
+    },
+    fileSelected(file) {
+      const fmt = (b) => (b / 1024 / 1024).toFixed(1) + ' MB';
+      document.getElementById('fileInfo').textContent = `${file.name} · ${fmt(file.size)}`;
+      document.getElementById('drop').classList.add('ok');
+      setPhase('analyzed');
+    },
+  };
+})();
+</script>
 
 <script src="vendor/pdf-lib.min.js"></script>
 <script src="vendor/pdf.min.js"></script>
@@ -1905,7 +1781,9 @@
   }
   const setProgress = (localPct) => {
     const lp = Math.max(0, Math.min(100, localPct));
-    internalSetProgress(progressBase + lp * progressRange / 100);
+    const finalPct = progressBase + lp * progressRange / 100;
+    internalSetProgress(finalPct);
+    if (window.ChompUI) window.ChompUI.setProgressDisplay(finalPct);
   };
   const resetProgress = () => setProgress(0);
 
@@ -2081,20 +1959,20 @@
     const recommendedMB = roundToFriendlyMB(estimatedMB * 1.15);
 
     $analysis.innerHTML = `
-      <div><strong>共 ${a.pageCount} 頁 · ${a.aCount} 張圖可壓縮${a.bCount > 0 ? ` · ${a.bCount} 張遮色片` : ''}${a.cCount > 0 ? ` · ${a.cCount} 張特殊格式` : ''}</strong></div>
-      <div class="bar">
-        <div class="jpeg" style="width:${aPct.toFixed(1)}%" title="可壓縮的圖"></div>
-        <div class="other" style="width:${bPct.toFixed(1)}%;background:#fbbf24" title="遮色片"></div>
-        <div class="other" style="width:${cPct.toFixed(1)}%;background:#ef4444" title="特殊格式"></div>
-        <div class="other" style="width:${textPct.toFixed(1)}%" title="文字等"></div>
+      <div class="stat-line">${a.pageCount} 頁 · ${a.aCount} 張圖可壓縮${a.bCount > 0 ? ` · ${a.bCount} 張遮色片` : ''}${a.cCount > 0 ? ` · ${a.cCount} 張特殊格式` : ''}</div>
+      <div class="v3-bar">
+        <div class="compressible" style="width:${aPct.toFixed(1)}%"></div>
+        <div class="masks" style="width:${bPct.toFixed(1)}%"></div>
+        <div class="special" style="width:${cPct.toFixed(1)}%"></div>
+        <div class="text" style="width:${textPct.toFixed(1)}%"></div>
       </div>
-      <div class="breakdown">
-        <div>🖼 <strong>可壓縮的圖片:${fmtMB(a.aBytes)}</strong>(${aPct.toFixed(0)}%)</div>
-        ${a.bBytes > 0 ? `<div>🎭 <strong>遮色片:${fmtMB(a.bBytes)}</strong>(${bPct.toFixed(0)}%)— 會優化,省一點</div>` : ''}
-        ${a.cBytes > 0 ? `<div>🚫 <strong>特殊格式:${fmtMB(a.cBytes)}</strong>(${cPct.toFixed(0)}%)— 原樣保留,不影響閱讀</div>` : ''}
-        <div>📄 <strong>文字、字體、向量圖:${fmtMB(a.textOtherBytes)}</strong>(${textPct.toFixed(0)}%)</div>
-        <div style="color:var(--text-3);margin-top:6px">💡 預設「自動最佳化」即可。若想限制大小,勾下方並設 <strong>${recommendedMB} MB</strong>(已預填)。</div>
+      <div class="v3-legend">
+        <span><span class="d" style="background:#e86ca0"></span>圖片 ${fmtMB(a.aBytes)}</span>
+        ${a.bBytes > 0 ? `<span><span class="d" style="background:#f4845f"></span>遮色片 ${fmtMB(a.bBytes)}</span>` : ''}
+        ${a.cBytes > 0 ? `<span><span class="d" style="background:#8b5cf6"></span>特殊 ${fmtMB(a.cBytes)}</span>` : ''}
+        <span><span class="d" style="background:#b8a898"></span>文字 ${fmtMB(a.textOtherBytes)}</span>
       </div>
+      <div class="v3-rec">💡 預設「自動最佳化」即可。若想限制大小,勾下方並設 <strong>${recommendedMB} MB</strong>(已預填)。</div>
     `;
     $analysis.style.display = 'block';
     // 強制 preserve mode + 自動填入推薦值(用戶手動改過後仍尊重)
@@ -2115,7 +1993,9 @@
       return;
     }
     currentFile = f;
-    $fileInfo.textContent = `已選:${f.name}(${fmtMB(f.size)})`;
+    window.currentFile = f;
+    $fileInfo.textContent = `${f.name} · ${fmtMB(f.size)}`;
+    if (window.ChompUI) window.ChompUI.fileSelected(f);
     $go.disabled = false;
     $download.style.display = 'none';
     clearLog();
@@ -3466,6 +3346,7 @@
     $mascots.classList.remove('done', 'shark-won', 'dino-won');
     $mascots.classList.add('busy');
     resetRace();
+    if (window.ChompUI) window.ChompUI.setPhase('compressing');
     try {
       const bytes = await shrink(currentFile);
       const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -3484,7 +3365,8 @@
       $download.href = url;
       $download.download = outName;
       $download.style.display = 'inline-block';
-      $download.textContent = `下載 ${outName}`;
+      $download.textContent = `⬇ 下載 ${outName}`;
+      if (window.ChompUI) window.ChompUI.showResult(currentFile.size, bytes.length, url, outName);
       // 檔案已產出 → 推到 100%、揭曉勝者、秀獎盃
       declareWinner();
       $mascots.classList.remove('busy');
@@ -3497,6 +3379,7 @@
       log('\n✗ ' + (cancelRequested ? '已取消' : '失敗:' + err.message));
       console.error(err);
       $mascots.classList.remove('busy');
+      if (window.ChompUI) window.ChompUI.showError(cancelRequested ? '已取消' : err.message);
     } finally {
       $go.disabled = false;
       $cancel.hidden = true;
@@ -3504,5 +3387,6 @@
   });
 })();
 </script>
+
 </body>
 </html>
