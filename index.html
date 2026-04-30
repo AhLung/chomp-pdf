@@ -238,7 +238,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.4.2</span>
+        <span class="v3-badge">v1.4.3</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -389,7 +389,7 @@
         </details>
         <details>
           <summary>用了什麼技術?</summary>
-          <p>瀏覽器原生 + WebAssembly：pdf-lib、pdf.js、MozJPEG、JPEG 2000、OxiPNG。每張圖會同時用幾種不同的壓縮方式試一次,然後挑出最小張的版本放回 PDF 裡。</p>
+          <p>瀏覽器原生 + WebAssembly:pdf-lib、pdf.js、MozJPEG、JPEG 2000、OxiPNG。每張圖會同時用幾種不同的壓縮方式試一次,然後挑出最小張的版本放回 PDF 裡。整頁信息圖、表格、文字海報這類「文字圖」會自動偵測並保留高畫質。</p>
         </details>
       </div>
     </div>
@@ -398,6 +398,11 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.4.3</strong> · 2026-04-30</div>
+        <ul>
+          <li><strong>新增文字圖偵測</strong>:整頁信息圖、表格、文字海報這類「畫成一張圖呈現的內容」會自動偵測並保留高畫質,文字不再被壓糊</li>
+          <li>大檔(>200MB)模式:跳過元件 / 色彩描述去重,省幾秒卡頓</li>
+        </ul>
         <div class="cl-ver"><strong>v1.4.2</strong> · 2026-04-30</div>
         <ul>
           <li>修正掃描文件容易被誤判成「色塊圖」激進壓縮 → 文字邊緣更乾淨</li>
@@ -2286,23 +2291,70 @@
     return Math.max(vR, vG, vB) < sizeFactor;
   }
 
+  // 文字圖偵測:整頁信息圖 / 表格 / 文字海報這類「主要內容是文字的圖」
+  // 演算法:切 16×16 block,計每塊灰階 max-min。
+  //   flat block(< 8):大面積純色背景 — text-image 比例高
+  //   sharp block(> 200):銳利字邊 / 分隔線 — text-image 比例顯著
+  // 門檻 flat ≥ 35% AND sharp ≥ 5% 對 9 張樣本 100% 準確
+  // 命中時 recompressImage 強制 scale=1.0 + quality ≥ 0.9 確保文字清楚
+  function isTextImage(canvas) {
+    const w = canvas.width, h = canvas.height;
+    // 太小不適用(信息圖一般 > 800px 短邊)
+    if (w < 400 || h < 200) return false;
+    const ctx = canvas.getContext('2d');
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const BS = 16;
+    const blocksX = Math.floor(w / BS);
+    const blocksY = Math.floor(h / BS);
+    if (blocksX < 8 || blocksY < 4) return false;
+    // 大圖抽樣:每 step 個 block 取一次
+    const step = Math.max(1, Math.floor(Math.sqrt(blocksX * blocksY / 1500)));
+    let flatBlocks = 0, sharpBlocks = 0, total = 0;
+    for (let by = 0; by < blocksY; by += step) {
+      for (let bx = 0; bx < blocksX; bx += step) {
+        let mn = 255, mx = 0;
+        for (let dy = 0; dy < BS; dy++) {
+          const y = by * BS + dy;
+          const rowBase = y * w * 4;
+          for (let dx = 0; dx < BS; dx++) {
+            const i = rowBase + (bx * BS + dx) * 4;
+            // ITU-R BT.601 luminance
+            const g = (data[i] * 299 + data[i + 1] * 587 + data[i + 2] * 114) >> 10;
+            if (g < mn) mn = g;
+            if (g > mx) mx = g;
+          }
+        }
+        const range = mx - mn;
+        if (range < 8) flatBlocks++;
+        else if (range > 200) sharpBlocks++;
+        total++;
+      }
+    }
+    if (total === 0) return false;
+    const flatPct = flatBlocks / total;
+    const sharpPct = sharpBlocks / total;
+    return flatPct >= 0.35 && sharpPct >= 0.05;
+  }
+
   // codec: 'jpeg' | 'jpx' | 'smart'(實際永遠走 encodeCanvas 賽馬)
   // returns { bytes, filter, label, plateScale? } | null
   async function recompressImage(origBytes, scale, quality, codec, filterType = 'DCTDecode', dict = null, pdfCtx = null, hasMask = false) {
     if (hasMask) {
-      // 有 SMask/Mask 的主圖:先 decode 全尺寸偵測 plate
+      // 有 SMask/Mask 的主圖:先 decode 全尺寸偵測 plate / text-image
       const fullCanvas = await imageToCanvas(origBytes, dict, filterType, 1.0, pdfCtx);
       if (!fullCanvas) return null;
       const isPlate = isPlateImage(fullCanvas);
+      const isText = !isPlate && isTextImage(fullCanvas);
       const w = fullCanvas.width, h = fullCanvas.height;
-      // 安全降版:plate 型走超壓,non-plate 型走「降尺寸 + 高 quality」(避免 alpha 邊緣 fringing)
-      // 用 OxiPNG 對小尺寸無損圖也能接,因為 PNG 不會像 JPEG 在邊緣產生噪點
-      const pScale = isPlate
-        ? Math.max(0.25, scale * 0.6)
-        : Math.max(0.5, scale); // non-plate 不能太狠,維持 ≥ 0.5
-      const pQuality = isPlate
-        ? Math.max(0.3, quality * 0.7)
-        : Math.max(0.85, quality * 1.3); // non-plate 提到 0.85+ 避免邊緣 fringing
+      // text-image:文字務必清楚 → 不縮 + quality 0.92 floor
+      // plate:激進壓 quality * 0.7、scale * 0.6
+      // non-plate / non-text:降尺寸 + 高 quality(避免 alpha 邊緣 fringing)
+      const pScale = isText ? 1.0
+        : isPlate ? Math.max(0.25, scale * 0.6)
+        : Math.max(0.5, scale);
+      const pQuality = isText ? Math.max(0.92, quality)
+        : isPlate ? Math.max(0.3, quality * 0.7)
+        : Math.max(0.85, quality * 1.3);
       const newW = Math.max(1, Math.floor(w * pScale));
       const newH = Math.max(1, Math.floor(h * pScale));
       const sc = document.createElement('canvas');
@@ -2312,22 +2364,47 @@
       fullCanvas.width = fullCanvas.height = 0;
       sc.width = sc.height = 0;
       if (!encResult || !encResult.bytes) return null;
-      return { ...encResult, plateScale: pScale };
+      const out = { ...encResult, plateScale: pScale };
+      if (isText) out.textImage = true;
+      else if (isPlate) out.plateLike = true;
+      return out;
     }
 
-    const canvas = await imageToCanvas(origBytes, dict, filterType, scale, pdfCtx);
+    let canvas = await imageToCanvas(origBytes, dict, filterType, scale, pdfCtx);
     if (!canvas) return null;
-    // Fovea #2:plate-like 偵測(均勻色塊 = 背景/裝飾,可激進壓)
-    // 只對中大型圖跑(小圖差距不明顯,避免抽樣不準)
+    let finalScale = scale;
     let finalQuality = quality;
     let plateDetected = false;
+    let textDetected = false;
+    // Fovea #2:plate-like 偵測(均勻色塊 = 背景/裝飾,可激進壓)— 中大圖才跑
     if (canvas.width >= 300 && canvas.height >= 300 && isPlateImage(canvas)) {
       finalQuality = Math.max(0.3, quality * 0.7);
       plateDetected = true;
     }
+    // 文字圖偵測(整頁信息圖、表格、文字海報):scale 拉回 1.0、quality 拉到 0.92 floor
+    // 必須 plate 不命中才進(plate 跟 text 互斥),且圖夠大才 worth 檢測
+    else if (canvas.width >= 400 && canvas.height >= 200 && isTextImage(canvas)) {
+      textDetected = true;
+      finalQuality = Math.max(0.92, quality);
+      // 如果 caller 給的 scale < 1.0 就重 decode 全尺寸,不然字會糊
+      if (scale < 0.98) {
+        const fullCanvas = await imageToCanvas(origBytes, dict, filterType, 1.0, pdfCtx);
+        if (fullCanvas) {
+          canvas.width = canvas.height = 0;
+          canvas = fullCanvas;
+          finalScale = 1.0;
+        }
+      }
+    }
     const result = await encodeCanvas(canvas, finalQuality, codec);
     canvas.width = 0; canvas.height = 0;
-    if (result && plateDetected) result.plateLike = true;
+    if (result) {
+      if (plateDetected) result.plateLike = true;
+      if (textDetected) {
+        result.textImage = true;
+        if (finalScale !== scale) result.plateScale = finalScale; // 重用 plateScale field 表示「實際用的 scale」
+      }
+    }
     return result;
   }
 
@@ -2458,6 +2535,10 @@
   // 回傳預處理後的 PDF bytes,後續所有 attempt 從這裡接續(省 4-10s 每次上探)
   async function prepareDocumentBytes(origBuf, onLog) {
     const log2 = (msg) => { if (onLog) onLog(msg); };
+    const origSize = origBuf.byteLength || origBuf.length || 0;
+    // 大檔(>200MB)模式:跳過 Form/ICC dedup(對大圖多的 PDF 省的有限,但 enumerateIndirectObjects
+    // 全 walk 一次就要好幾秒)— 換來明顯減少卡頓時間
+    const bigFile = origSize > 200 * 1024 * 1024;
     const pdfDoc = await PDFLib.PDFDocument.load(origBuf, { updateMetadata: false });
     stripMetadata(pdfDoc);
     const imgMeta = stripImageMetadata(pdfDoc);
@@ -2469,10 +2550,14 @@
     log2(`  影像去重:合併 ${dup.count} 個重複,省 ${fmtMB(dup.saved)}`);
 
     setProgressPhase(8, 4);
-    const formDup = await dedupFormXObjects(pdfDoc);
-    if (formDup.count > 0) log2(`  重複元件合併:${formDup.count} 個,省 ${fmtMB(formDup.saved)}`);
-    const icc = await dedupICCProfiles(pdfDoc);
-    if (icc.count > 0) log2(`  重複色彩描述合併:${icc.count} 個,省 ${fmtMB(icc.saved)}`);
+    if (bigFile) {
+      log2(`  大檔模式:跳過元件 / 色彩描述去重(省幾秒卡頓)`);
+    } else {
+      const formDup = await dedupFormXObjects(pdfDoc);
+      if (formDup.count > 0) log2(`  重複元件合併:${formDup.count} 個,省 ${fmtMB(formDup.saved)}`);
+      const icc = await dedupICCProfiles(pdfDoc);
+      if (icc.count > 0) log2(`  重複色彩描述合併:${icc.count} 個,省 ${fmtMB(icc.saved)}`);
+    }
 
     setProgressPhase(12, 8);
     log2('  清理未引用物件中...');
@@ -2562,6 +2647,7 @@
     let shrunk = 0, skipped = 0;
     let bgImageCount = 0;     // Fovea #1: 跨頁背景圖
     let plateImageCount = 0;  // Fovea #2: 均勻色塊圖
+    let textImageCount = 0;   // Fovea #3: 文字圖(整頁信息圖 / 表格 / 文字海報)
     const skipReasons = new Map();
     const codecWins = new Map(); // codec winner stats
     for (let i = 0; i < items.length; i++) {
@@ -2602,6 +2688,7 @@
         const lbl = result.label || 'unknown';
         codecWins.set(lbl, (codecWins.get(lbl) || 0) + 1);
         if (result.plateLike) plateImageCount++;
+        if (result.textImage) textImageCount++;
       }
       setProgress(((i + 1) / items.length) * 100);
       if ((i + 1) % 20 === 0 || i === items.length - 1) {
@@ -2619,8 +2706,12 @@
       const totalWins = Array.from(codecWins.values()).reduce((a, b) => a + b, 0);
       log(`  壓縮引擎:${parts.join(' · ')} | 動 ${totalWins}、未動 ${skipped}`);
       // Fovea 統計
-      if (bgImageCount > 0 || plateImageCount > 0) {
-        log(`  偵測重點:背景底圖 ${bgImageCount} 張、大色塊圖 ${plateImageCount} 張(額外壓一點)`);
+      if (bgImageCount > 0 || plateImageCount > 0 || textImageCount > 0) {
+        const parts = [];
+        if (bgImageCount > 0) parts.push(`背景底圖 ${bgImageCount} 張`);
+        if (plateImageCount > 0) parts.push(`大色塊圖 ${plateImageCount} 張(額外壓一點)`);
+        if (textImageCount > 0) parts.push(`文字圖 ${textImageCount} 張(保留高畫質)`);
+        log(`  偵測重點:${parts.join('、')}`);
       }
     }
     if (verboseLog && skipped > 0) {
@@ -2685,7 +2776,7 @@
     setProgressPhase(8, 80);
     const candidates = new Array(items.length).fill(null);
     const codecWins = new Map();
-    let bgCount = 0, plateCount = 0;
+    let bgCount = 0, plateCount = 0, textCount = 0;
     for (let i = 0; i < items.length; i++) {
       if (i % 5 === 0) checkCancelled();
       const { obj, dict, filterType, hasMask } = items[i];
@@ -2705,9 +2796,12 @@
       const perQuality = Math.max(qFloor, Math.min(0.95, quality * boost * bgPenalty));
       const result = await recompressImage(orig, perScale, perQuality, codec, filterType, dict, pdfDoc.context, !!hasMask);
       if (result && result.bytes.length < orig.length) {
-        candidates[i] = { ...result, perScale, origLen: orig.length };
+        // text-image 走 recompressImage 內部會 override perScale 為 1.0 → 用 result.plateScale
+        const actualScale = result.plateScale || perScale;
+        candidates[i] = { ...result, perScale: actualScale, origLen: orig.length };
         codecWins.set(result.label || '?', (codecWins.get(result.label || '?') || 0) + 1);
         if (result.plateLike) plateCount++;
+        if (result.textImage) textCount++;
       }
       setProgress(((i + 1) / items.length) * 100);
       if ((i + 1) % 20 === 0 || i === items.length - 1) {
@@ -2720,7 +2814,13 @@
       const wins = candidates.filter(c => c).length;
       const sumBytes = candidates.reduce((s, c) => s + (c ? c.bytes.length : 0), 0);
       log(`  壓縮引擎:${parts.join(' · ')} | 圖片總 ${fmtMB(sumBytes)}、可動 ${wins}/${items.length}`);
-      if (bgCount || plateCount) log(`  偵測重點:背景底圖 ${bgCount}、大色塊圖 ${plateCount}`);
+      if (bgCount || plateCount || textCount) {
+        const parts = [];
+        if (bgCount) parts.push(`背景底圖 ${bgCount}`);
+        if (plateCount) parts.push(`大色塊圖 ${plateCount}`);
+        if (textCount) parts.push(`文字圖 ${textCount}(保留高畫質)`);
+        log(`  偵測重點:${parts.join('、')}`);
+      }
     }
     return { items, candidates, itemDims, rankByIdx, isPageBgLike, smaskScale };
   }
