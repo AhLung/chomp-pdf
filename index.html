@@ -238,7 +238,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.4.3</span>
+        <span class="v3-badge">v1.4.4</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -398,6 +398,11 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.4.4</strong> · 2026-04-30</div>
+        <ul>
+          <li><strong>自動最佳化模式速度大幅提升</strong>:每張圖只解碼一次給兩個品質版本共用(之前各解碼一次)— 大檔可省 30-50% 探測時間</li>
+          <li>遮色片瘦身內聯到預處理階段,大檔節省一次完整 PDF 序列化 (~30-60 秒)</li>
+        </ul>
         <div class="cl-ver"><strong>v1.4.3</strong> · 2026-04-30</div>
         <ul>
           <li><strong>新增文字圖偵測</strong>:整頁信息圖、表格、文字海報這類「畫成一張圖呈現的內容」會自動偵測並保留高畫質,文字不再被壓糊</li>
@@ -2533,7 +2538,9 @@
 
   // 預處理:跑一次「跟 quality 無關」的工作 — dedup / GC / Form / ICC / Flate
   // 回傳預處理後的 PDF bytes,後續所有 attempt 從這裡接續(省 4-10s 每次上探)
-  async function prepareDocumentBytes(origBuf, onLog) {
+  // opts.smaskScale:若給,在最終 save 前順便把 SMask 降階 — shrinkAuto 用,
+  // 省一次 PDF 載入 + save(對大檔可省 30-60 秒)。shrinkPreserve 不傳 → 原行為
+  async function prepareDocumentBytes(origBuf, onLog, opts = {}) {
     const log2 = (msg) => { if (onLog) onLog(msg); };
     const origSize = origBuf.byteLength || origBuf.length || 0;
     // 大檔(>200MB)模式:跳過 Form/ICC dedup(對大圖多的 PDF 省的有限,但 enumerateIndirectObjects
@@ -2573,7 +2580,14 @@
     const flateRe = await recompressFlateLossless(pdfDoc, skipRefs, (i, t) => setProgress((i / t) * 100));
     log2(`  無損再壓縮:${flateRe.count} 個,省 ${fmtMB(flateRe.saved)}`);
 
-    setProgressPhase(32, 5);
+    // opts.smaskScale:在這裡內聯 SMask 降階,省一次 save
+    if (opts.smaskScale) {
+      setProgressPhase(32, 4);
+      log2(`  遮色片瘦身(×${opts.smaskScale})...`);
+      await downscaleSMasks(pdfDoc, opts.smaskScale, (i, t) => setProgress((i / t) * 100));
+    }
+
+    setProgressPhase(opts.smaskScale ? 36 : 32, 5);
     log2('  保存預處理結果...');
     await yieldToMain();
     const prepBytes = await pdfDoc.save({ useObjectStreams: true });
@@ -2820,6 +2834,152 @@
         if (plateCount) parts.push(`大色塊圖 ${plateCount}`);
         if (textCount) parts.push(`文字圖 ${textCount}(保留高畫質)`);
         log(`  偵測重點:${parts.join('、')}`);
+      }
+    }
+    return { items, candidates, itemDims, rankByIdx, isPageBgLike, smaskScale };
+  }
+
+  // 多版本 probe:一次解碼,跑 N 個 setpoint。比 N 次呼叫 buildPreservePdfProbe 快 ~50%,
+  // 因為每張圖只 decode 一次(decode 是大頭,encode 相對快)。回傳:
+  //   candidates[setpointIdx][imageIdx] = { bytes, perScale, ... } | null
+  async function buildPreservePdfMultiProbe(prepBytes, setpoints, codec, verboseLog, skipSmaskDownscale = false) {
+    const updateLogLine = (prefix) => {
+      const had = $log.textContent.endsWith('\n');
+      const lines = $log.textContent.split('\n');
+      if (had) lines.pop();
+      if (lines.length > 0) lines[lines.length - 1] = prefix;
+      else lines.push(prefix);
+      $log.textContent = lines.join('\n') + (had ? '\n' : '');
+      $log.scrollTop = $log.scrollHeight;
+    };
+    const pdfDoc = await PDFLib.PDFDocument.load(prepBytes, { updateMetadata: false });
+    const items = await collectImageStreams(pdfDoc);
+
+    let smaskScale = 0.65;
+    if (!skipSmaskDownscale) {
+      setProgressPhase(0, 8);
+      // 用最高 quality 判 smaskScale(無從預知 setpoint 細節時的折衷)
+      const maxQ = Math.max(...setpoints.map(sp => sp.quality));
+      smaskScale = maxQ < 0.5 ? 0.45 : maxQ < 0.75 ? 0.6 : 0.75;
+      if (verboseLog) log(`  遮色片瘦身(×${smaskScale})`);
+      await downscaleSMasks(pdfDoc, smaskScale, (i, t) => setProgress((i / t) * 100));
+    }
+
+    // 智慧分配計算
+    const itemDims = items.map((it, idx) => {
+      const w = it.dict.get(PDFLib.PDFName.of('Width'))?.asNumber?.() || 0;
+      const h = it.dict.get(PDFLib.PDFName.of('Height'))?.asNumber?.() || 0;
+      return { idx, pixels: w * h, w, h };
+    });
+    const ranked = itemDims.slice().sort((a, b) => b.pixels - a.pixels);
+    const rankByIdx = new Map();
+    for (let r = 0; r < ranked.length; r++) {
+      rankByIdx.set(ranked[r].idx, ranked.length === 1 ? 0 : r / (ranked.length - 1));
+    }
+    const pages = pdfDoc.getPages();
+    const pageARs = pages.map(p => { const w = p.getWidth(), h = p.getHeight(); return h > 0 ? w / h : 1; });
+    const isPageBgLike = (w, h, rank) => {
+      if (rank > 0.1 || h <= 0) return false;
+      return pageARs.some(par => Math.abs(par - w/h) / par < 0.15);
+    };
+
+    setProgressPhase(8, 80);
+    const numSp = setpoints.length;
+    const candidates = setpoints.map(() => new Array(items.length).fill(null));
+    const codecWins = new Map();
+    let bgCount = 0, plateCount = 0, textCount = 0;
+    for (let i = 0; i < items.length; i++) {
+      if (i % 5 === 0) checkCancelled();
+      const { obj, dict, filterType, hasMask } = items[i];
+      const orig = obj.contents;
+      const dim = itemDims[i];
+      const shortDim = Math.min(dim.w, dim.h);
+      const isSmallImage = shortDim < 300 || dim.pixels < 90000;
+      const rank = rankByIdx.get(i) ?? 0.5;
+      const boost = isSmallImage ? 1.0 : (1.25 - rank * 0.5);
+      const bgPenalty = (!isSmallImage && isPageBgLike(dim.w, dim.h, rank)) ? 0.9 : 1.0;
+      if (bgPenalty < 1) bgCount++;
+
+      // 一次 decode 全尺寸,所有 setpoint 共用(decode 是大頭)
+      const fullCanvas = await imageToCanvas(orig, dict, filterType, 1.0, pdfDoc.context);
+      if (!fullCanvas) continue;
+      const fcW = fullCanvas.width, fcH = fullCanvas.height;
+      // 一次跑 plate / text 偵測(setpoint 之間共用)
+      let isPlate = false, isText = false;
+      if (fcW >= 300 && fcH >= 300) {
+        isPlate = isPlateImage(fullCanvas);
+        if (!isPlate && fcW >= 400 && fcH >= 200) {
+          isText = isTextImage(fullCanvas);
+        }
+      }
+
+      for (let s = 0; s < numSp; s++) {
+        const sp = setpoints[s];
+        // 算 perScale / perQuality(套智慧分配)
+        let perScale = Math.max(0.2, Math.min(1.0, sp.scale * boost * bgPenalty));
+        if (isSmallImage) perScale = 1.0;
+        else if (shortDim * perScale < 200 && shortDim >= 200) perScale = 200 / shortDim;
+        const qFloor = isSmallImage ? 0.75 : 0.3;
+        let perQuality = Math.max(qFloor, Math.min(0.95, sp.quality * boost * bgPenalty));
+
+        // 套 plate / text / hasMask 三種 override
+        if (isText) {
+          perScale = 1.0;
+          perQuality = Math.max(0.92, perQuality);
+        } else if (isPlate && hasMask) {
+          perScale = Math.max(0.25, perScale * 0.6);
+          perQuality = Math.max(0.3, perQuality * 0.7);
+        } else if (isPlate) {
+          perQuality = Math.max(0.3, perQuality * 0.7);
+        } else if (hasMask) {
+          perScale = Math.max(0.5, perScale);
+          perQuality = Math.max(0.85, perQuality * 1.3);
+        }
+
+        // drawImage 縮到目標尺寸(decode 已完成,這步很快)
+        const newW = Math.max(1, Math.floor(fcW * perScale));
+        const newH = Math.max(1, Math.floor(fcH * perScale));
+        let scaled;
+        if (newW === fcW && newH === fcH) {
+          scaled = fullCanvas;
+        } else {
+          scaled = document.createElement('canvas');
+          scaled.width = newW;
+          scaled.height = newH;
+          scaled.getContext('2d').drawImage(fullCanvas, 0, 0, newW, newH);
+        }
+        const enc = await encodeCanvas(scaled, perQuality, codec);
+        if (scaled !== fullCanvas) { scaled.width = scaled.height = 0; }
+
+        if (enc && enc.bytes && enc.bytes.length < orig.length) {
+          candidates[s][i] = { ...enc, perScale, origLen: orig.length };
+          codecWins.set(enc.label || '?', (codecWins.get(enc.label || '?') || 0) + 1);
+        }
+      }
+      // 統計只算一次(setpoint 共用偵測結果)
+      if (isPlate) plateCount++;
+      if (isText) textCount++;
+
+      fullCanvas.width = fullCanvas.height = 0;
+      setProgress(((i + 1) / items.length) * 100);
+      if (verboseLog && ((i + 1) % 20 === 0 || i === items.length - 1)) {
+        updateLogLine(`  探測 ${i + 1}/${items.length}(${numSp} 版本一次跑)`);
+      }
+    }
+    if (verboseLog) {
+      const labelMap = { jp2: 'JP2', mozjpeg: 'Moz', oxipng: 'Oxi', 'canvas-jpg': 'cvs' };
+      const parts = ['jp2', 'mozjpeg', 'oxipng', 'canvas-jpg']
+        .filter(k => (codecWins.get(k) || 0) > 0)
+        .map(k => `${labelMap[k]}=${codecWins.get(k)}`);
+      const wins = candidates[0].filter(c => c).length;
+      const sumBytes = candidates[0].reduce((s, c) => s + (c ? c.bytes.length : 0), 0);
+      log(`  壓縮引擎:${parts.join(' · ')} | 第 1 版總 ${fmtMB(sumBytes)}、可動 ${wins}/${items.length}`);
+      if (bgCount || plateCount || textCount) {
+        const detParts = [];
+        if (bgCount) detParts.push(`背景底圖 ${bgCount}`);
+        if (plateCount) detParts.push(`大色塊圖 ${plateCount}`);
+        if (textCount) detParts.push(`文字圖 ${textCount}(保留高畫質)`);
+        log(`  偵測重點:${detParts.join('、')}`);
       }
     }
     return { items, candidates, itemDims, rankByIdx, isPageBgLike, smaskScale };
@@ -3387,17 +3547,9 @@
     log(`模式:保留文字 · 自動最佳化(雙版本探測 + 智慧拼合)`);
     const origBuf = await file.arrayBuffer();
     log(`讀取 PDF ...`);
-    setProgressPhase(0, 22);
-    const rawPrepBytes = await prepareDocumentBytes(origBuf, log);
-
-    // 把 SMask 統一在 probe 外面降一次(兩個 probe + 拼合都共用),省掉重複工作
-    setProgressPhase(22, 6);
-    log(`遮色片瘦身(×0.65 · 雙 probe 共用)...`);
-    const smaskDoc = await PDFLib.PDFDocument.load(rawPrepBytes, { updateMetadata: false });
-    await downscaleSMasks(smaskDoc, 0.65, (i, t) => setProgress((i / t) * 100));
-    await yieldToMain();
-    const prepBytes = await smaskDoc.save({ useObjectStreams: true });
-    await yieldToMain();
+    // SMask 內聯到 prepareDocumentBytes,省一次 PDF load + save(大檔節省 30-60s)
+    setProgressPhase(0, 28);
+    const prepBytes = await prepareDocumentBytes(origBuf, log, { smaskScale: 0.65 });
 
     const setpoints = [
       { scale: 1.0, quality: 0.85, label: 'H' },  // 高畫質:1:1 解析度 + 85%
@@ -3405,15 +3557,18 @@
     ];
 
     setProgressPhase(28, 57);
-    const probeResults = [];
-    for (let s = 0; s < setpoints.length; s++) {
-      const sp = setpoints[s];
-      const spLabel = sp.label === 'H' ? '高' : '低';
-      log(`\n[第 ${s + 1} 次:${spLabel}畫質測試](縮放 ${Math.round(sp.scale * 100)}% · 畫質 ${Math.round(sp.quality * 100)}%)`);
-      startRace();
-      const probe = await buildPreservePdfProbe(prepBytes, sp.scale, sp.quality, codec, true, true);
-      probeResults.push(probe);
-    }
+    log(`\n[一次 decode、雙版本同時編碼]`);
+    startRace();
+    const multi = await buildPreservePdfMultiProbe(prepBytes, setpoints, codec, true, true);
+    // 重組成原本 probeResults 的格式(讓後續 knapsack 邏輯不變)
+    const probeResults = setpoints.map((_, i) => ({
+      items: multi.items,
+      candidates: multi.candidates[i],
+      itemDims: multi.itemDims,
+      rankByIdx: multi.rankByIdx,
+      isPageBgLike: multi.isPageBgLike,
+      smaskScale: multi.smaskScale,
+    }));
 
     // 每張圖 per-image 規則:LOW 體積 ≤ HIGH × 0.6 才換 LOW(明顯省才割捨畫質),
     // 否則保 HIGH(差不多大就保畫質)
