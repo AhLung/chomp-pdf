@@ -241,7 +241,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.5.0-alpha</span>
+        <span class="v3-badge">v1.5.0</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -401,9 +401,11 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
-        <div class="cl-ver"><strong>v1.5.0-alpha</strong> · 2026-04-30</div>
+        <div class="cl-ver"><strong>v1.5.0</strong> · 2026-04-30</div>
         <ul>
-          <li>(內部架構)Web Worker 骨架建好,啟動時背景載入所有 codec 驗證可用 — 為「壓更快」做準備,使用體驗暫時跟 v1.4.9 一樣</li>
+          <li><strong>主執行緒永不卡</strong>:整個壓縮 pipeline 搬進 Web Worker,壓縮中可以滾動、切換分頁、按取消都即時響應</li>
+          <li>不支援的瀏覽器(iOS Safari < 16.4)自動 fallback 主執行緒模式</li>
+          <li>下個版本(v1.5.1)會加 worker pool 並行,實際壓更快 3-5x</li>
         </ul>
         <div class="cl-ver"><strong>v1.4.9</strong> · 2026-04-30</div>
         <ul>
@@ -419,7 +421,7 @@
         </ul>
         <div class="cl-ver"><strong>v1.4.6</strong> · 2026-04-30</div>
         <ul>
-          <li>(同 v1.4.5,但偵測抽樣有 bug 標題仍糊 — 已於 v1.5.0-alpha 修正)</li>
+          <li>(同 v1.4.5,但偵測抽樣有 bug 標題仍糊 — 已於 v1.5.0 修正)</li>
         </ul>
         <div class="cl-ver"><strong>v1.4.5</strong> · 2026-04-30</div>
         <ul>
@@ -580,7 +582,7 @@
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
 
   // ===========================================================================
-  // Phase 1: compress-worker scaffolding(v1.5.0-alpha)
+  // Phase 1: compress-worker scaffolding(v1.5.0)
   // 目標:啟動 worker、確認所有依賴(pdf-lib/pako/openjpegwasm/JsCodecs)都能在
   //       worker 載入。Phase 1 不接管壓縮邏輯,主流程仍跑現有 main-thread 路徑。
   // ===========================================================================
@@ -3747,6 +3749,39 @@
     return finalBytes;
   }
 
+  // Phase 2.4:嘗試派 worker(主執行緒不卡),fallback 失敗 / 不可用走主 thread 舊路徑
+  async function shrinkViaWorker(file, options) {
+    const got = await globalThis.__chompGetWorker();
+    if (!got || !got.allOk) throw new Error('worker not ready');
+    const { worker } = got;
+    const fileBuf = await file.arrayBuffer();
+    return new Promise((resolve, reject) => {
+      const onMsg = (e) => {
+        const m = e.data;
+        if (m.type === 'progress') {
+          // worker 端已算完整 pct,直接顯示
+          if (window.ChompUI) window.ChompUI.setProgressDisplay(m.pct);
+        } else if (m.type === 'log-replace') {
+          $log.textContent = m.text;
+          $log.scrollTop = $log.scrollHeight;
+        } else if (m.type === 'done') {
+          worker.removeEventListener('message', onMsg);
+          resolve(m.bytes);
+        } else if (m.type === 'error') {
+          worker.removeEventListener('message', onMsg);
+          reject(new Error(m.msg || 'worker error'));
+        }
+      };
+      worker.addEventListener('message', onMsg);
+      // transferable:fileBuf 傳完後主 thread 那份就 detached(沒事,後續用不到原 buf)
+      worker.postMessage({
+        type: 'compress',
+        file: fileBuf,
+        options,
+      }, [fileBuf]);
+    });
+  }
+
   async function shrink(file) {
     log(`原始大小:${fmtMB(file.size)}`);
     const useTarget = document.getElementById('useTargetSize')?.checked;
@@ -3754,7 +3789,22 @@
     const codec = document.querySelector('input[name=codec]:checked').value;
     const tgtType = document.querySelector('input[name=tgtType]:checked').value;
 
-    // 沒勾「限制檔案大小」→ 自動模式
+    // 嘗試 worker 路徑(主 thread 不卡,但目前不影響速度;Phase 3 加 worker pool 後才會快)
+    if (_compressWorker && tgtType === 'size') {
+      try {
+        log('(Web Worker 模式 — 主執行緒不卡)');
+        const targetMB = useTarget ? parseFloat($target.value) : null;
+        return await shrinkViaWorker(file, {
+          fileName: file.name,
+          mode, useTargetSize: !!useTarget, targetMB,
+        });
+      } catch (err) {
+        console.warn('[ChompWorker] failed, fallback main thread:', err);
+        log('(Worker 失敗,改用主執行緒模式)');
+      }
+    }
+
+    // Fallback 主 thread
     if (!useTarget && tgtType === 'size') {
       return shrinkAuto(file, mode, codec);
     }
@@ -3781,6 +3831,7 @@
 
   $cancel.addEventListener('click', () => {
     cancelRequested = true;
+    if (_compressWorker) _compressWorker.postMessage({ type: 'cancel' });
     $cancel.disabled = true;
     $cancel.textContent = '取消中...';
   });

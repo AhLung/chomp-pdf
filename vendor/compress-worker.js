@@ -2598,24 +2598,69 @@ function _newCanvas() {
   }
 
 // ============================================================================
-// Phase 2.2 stubs — main thread UI 才有的東西,worker 端 no-op
-// 真接通(Phase 2.4)時 setProgress 會改成 postMessage('progress', ...)
+// Phase 2.4 stubs — UI 訊息回 main thread
 // ============================================================================
 let _workerCancelled = false;
 function checkCancelled() {
   if (_workerCancelled) throw new Error('使用者取消');
 }
-function setProgress() {}
-function setProgressPhase() {}
+
+// Progress:跟主 thread 一樣的 phase-relative 模型
+let _progressBase = 0, _progressRange = 100;
+function setProgressPhase(base, range, _ceil) {
+  _progressBase = base || 0;
+  _progressRange = range || 100;
+}
+let _lastProgressMsg = -1;
+function setProgress(localPct) {
+  const lp = Math.max(0, Math.min(100, localPct));
+  const finalPct = _progressBase + lp * _progressRange / 100;
+  // throttle:每整數 % 才 postMessage 一次,避免 spam
+  const rounded = Math.round(finalPct);
+  if (rounded !== _lastProgressMsg) {
+    _lastProgressMsg = rounded;
+    self.postMessage({ type: 'progress', pct: finalPct });
+  }
+}
+
+// Log:fake $log 用 buffer,setter 觸發時把 buffer 整個 forward 給 main
+// throttle:同一 macrotask 內多次 update 只送最後一個(buildPreservePdf 內部會
+// `$log.textContent = lines.join('\n')` 重組,每次都是完整內容)
+let _logBuffer = '';
+let _logFlushPending = false;
+function _scheduleLogFlush() {
+  if (_logFlushPending) return;
+  _logFlushPending = true;
+  Promise.resolve().then(() => {
+    _logFlushPending = false;
+    self.postMessage({ type: 'log-replace', text: _logBuffer });
+  });
+}
+const $log = {
+  get textContent() { return _logBuffer; },
+  set textContent(v) { _logBuffer = String(v); _scheduleLogFlush(); },
+  scrollTop: 0,
+  scrollHeight: 0,
+};
+function log(msg) {
+  if (_logBuffer && !_logBuffer.endsWith('\n')) _logBuffer += '\n';
+  _logBuffer += String(msg) + '\n';
+  _scheduleLogFlush();
+}
+function updateLogLine(prefix) {
+  // 替換最後一行
+  const idx = _logBuffer.lastIndexOf('\n', _logBuffer.length - 2);
+  _logBuffer = (idx >= 0 ? _logBuffer.slice(0, idx + 1) : '') + String(prefix) + '\n';
+  _scheduleLogFlush();
+}
+function clearLog() { _logBuffer = ''; _scheduleLogFlush(); }
+
+// Mascot / race 是主 thread CSS-driven 的東西,worker 端 no-op
 function startRace() {}
 function stopHeartbeat() {}
 function declareWinner() {}
 function creepToFinish() {}
 function waitForCompositorCommit() { return Promise.resolve(); }
-function log() {}            // worker 端 log → Phase 2.4 改成 postMessage('log', ...)
-function updateLogLine() {}
-function clearLog() {}
-const $log = { textContent: '' };  // 假 DOM 給 buildPreservePdf 內部 mucking
 
 
 // ============================================================================
