@@ -48,6 +48,71 @@ function depStatus() {
   };
 }
 
+// ============================================================================
+// Phase 3 — image-worker pool(orchestrator 端的 client）
+// 把 buildPreservePdfMultiProbe 的 image loop 從序列改並行。
+// 每個 image-worker 是輕量 worker(載 codecs 不載 pdf-lib),orchestrator
+// 派任務(plain bytes + 預先算好的 scalars)、收 encode 結果。
+// ============================================================================
+let _imagePool = null;        // [{ worker, busy, ready }, ...]
+let _imagePoolPromise = null; // 初始化中的 promise(避免 race)
+const POOL_SIZE = (() => {
+  try {
+    const hc = self.navigator?.hardwareConcurrency || 4;
+    // 留 1 核給 orchestrator + UI thread,上限 4 避免低階機 OOM
+    return Math.max(1, Math.min(4, hc - 1));
+  } catch (_) { return 2; }
+})();
+
+async function ensureImagePool() {
+  if (_imagePool) return _imagePool;
+  if (_imagePoolPromise) return _imagePoolPromise;
+  _imagePoolPromise = (async () => {
+    const workers = [];
+    for (let i = 0; i < POOL_SIZE; i++) {
+      const w = new Worker('image-worker.js' + qs);
+      const ready = new Promise((resolve, reject) => {
+        const onReady = (e) => {
+          if (e.data?.type === 'ready') {
+            w.removeEventListener('message', onReady);
+            const allOk = e.data.deps && Object.values(e.data.deps).every(Boolean);
+            if (e.data.error || !allOk) reject(new Error(e.data.error || 'image-worker deps incomplete'));
+            else resolve();
+          }
+        };
+        w.addEventListener('message', onReady);
+        setTimeout(() => reject(new Error('image-worker init timeout')), 10000);
+      });
+      workers.push({ worker: w, busy: false, ready });
+    }
+    // 全部 ready 才算初始化完成(任一失敗→reject,fallback inline)
+    await Promise.all(workers.map(x => x.ready));
+    _imagePool = workers;
+    return workers;
+  })();
+  return _imagePoolPromise;
+}
+
+// 對單一 image-worker 派一個 probe 任務,等回傳
+function dispatchProbe(slot, payload) {
+  return new Promise((resolve, reject) => {
+    const w = slot.worker;
+    const onMsg = (e) => {
+      const m = e.data;
+      if (!m) return;
+      if (m.type === 'probeDone' && m.result?.idx === payload.idx) {
+        w.removeEventListener('message', onMsg);
+        resolve(m.result);
+      } else if (m.type === 'probeError' && m.idx === payload.idx) {
+        w.removeEventListener('message', onMsg);
+        reject(new Error(m.msg));
+      }
+    };
+    w.addEventListener('message', onMsg);
+    w.postMessage({ type: 'probe', payload });
+  });
+}
+
   // ===== yieldToMain (index.html L2018-2020) =====
   function yieldToMain(ms = 60) {
     return new Promise(r => setTimeout(r, ms));
@@ -2049,56 +2114,64 @@ function depStatus() {
     const candidates = setpoints.map(() => new Array(items.length).fill(null));
     const codecWins = new Map();
     let bgCount = 0, plateCount = 0, textCount = 0;
-    for (let i = 0; i < items.length; i++) {
-      if (i % 5 === 0) checkCancelled();
-      const { obj, dict, filterType, hasMask } = items[i];
-      const orig = obj.contents;
+    let progressDone = 0;
+    const updateProgress = () => {
+      progressDone++;
+      setProgress((progressDone / items.length) * 100);
+      if (verboseLog && (progressDone % 20 === 0 || progressDone === items.length)) {
+        updateLogLine(`  探測 ${progressDone}/${items.length}(${numSp} 版本一次跑)`);
+      }
+    };
+
+    // ====== Phase 3:把 DCTDecode 圖派給 image-worker pool 平行處理 ======
+    // Flate 圖留 inline(dict 解碼需 pdf-lib,沒搬進 image-worker)
+    let pool = null;
+    try {
+      pool = await ensureImagePool();
+      if (verboseLog) log(`  並行池啟用(${pool.length} workers)`);
+    } catch (e) {
+      if (verboseLog) log(`  並行池啟用失敗,單線程處理:${e.message}`);
+    }
+
+    // ----- 取出每個 image 的 per-image scalar(無論 inline 或 pool 都用) -----
+    function preCalcPerImage(i) {
+      const { hasMask } = items[i];
       const dim = itemDims[i];
       const shortDim = Math.min(dim.w, dim.h);
       const isSmallImage = shortDim < 300 || dim.pixels < 90000;
       const rank = rankByIdx.get(i) ?? 0.5;
       const boost = isSmallImage ? 1.0 : (1.25 - rank * 0.5);
       const bgPenalty = (!isSmallImage && isPageBgLike(dim.w, dim.h, rank)) ? 0.9 : 1.0;
+      return { hasMask, shortDim, isSmallImage, boost, bgPenalty };
+    }
+
+    // ----- inline 處理(原邏輯,保留給 Flate 圖 + pool 失敗 fallback) -----
+    async function processInline(i) {
+      const { obj, dict, filterType, hasMask } = items[i];
+      const orig = obj.contents;
+      const { shortDim, isSmallImage, boost, bgPenalty } = preCalcPerImage(i);
       if (bgPenalty < 1) bgCount++;
 
-      // 一次 decode 全尺寸,所有 setpoint 共用(decode 是大頭)
       const fullCanvas = await imageToCanvas(orig, dict, filterType, 1.0, pdfDoc.context);
-      if (!fullCanvas) continue;
+      if (!fullCanvas) { updateProgress(); return; }
       const fcW = fullCanvas.width, fcH = fullCanvas.height;
-      // 一次跑 plate / text 偵測(setpoint 之間共用)
       let isPlate = false, isText = false;
-      if (fcW >= 300 && fcH >= 300) {
-        isPlate = isPlateImage(fullCanvas);
-      }
-      // textImage 用面積判:寬扁標題 banner 也要能進(plate 跟 text 互斥)
-      if (!isPlate && fcW * fcH >= 60000 && fcW >= 200 && fcH >= 80) {
-        isText = isTextImage(fullCanvas);
-      }
+      if (fcW >= 300 && fcH >= 300) isPlate = isPlateImage(fullCanvas);
+      if (!isPlate && fcW * fcH >= 60000 && fcW >= 200 && fcH >= 80) isText = isTextImage(fullCanvas);
 
       for (let s = 0; s < numSp; s++) {
         const sp = setpoints[s];
-        // 算 perScale / perQuality(套智慧分配)
         let perScale = Math.max(0.2, Math.min(1.0, sp.scale * boost * bgPenalty));
         if (isSmallImage) perScale = 1.0;
         else if (shortDim * perScale < 200 && shortDim >= 200) perScale = 200 / shortDim;
         const qFloor = isSmallImage ? 0.75 : 0.3;
         let perQuality = Math.max(qFloor, Math.min(0.95, sp.quality * boost * bgPenalty));
 
-        // 套 plate / text / hasMask 三種 override
-        if (isText) {
-          perScale = 1.0;
-          perQuality = Math.max(0.92, perQuality);
-        } else if (isPlate && hasMask) {
-          perScale = Math.max(0.25, perScale * 0.6);
-          perQuality = Math.max(0.3, perQuality * 0.7);
-        } else if (isPlate) {
-          perQuality = Math.max(0.3, perQuality * 0.7);
-        } else if (hasMask) {
-          perScale = Math.max(0.5, perScale);
-          perQuality = Math.max(0.85, perQuality * 1.3);
-        }
+        if (isText) { perScale = 1.0; perQuality = Math.max(0.92, perQuality); }
+        else if (isPlate && hasMask) { perScale = Math.max(0.25, perScale * 0.6); perQuality = Math.max(0.3, perQuality * 0.7); }
+        else if (isPlate) { perQuality = Math.max(0.3, perQuality * 0.7); }
+        else if (hasMask) { perScale = Math.max(0.5, perScale); perQuality = Math.max(0.85, perQuality * 1.3); }
 
-        // drawImage 縮到目標尺寸(decode 已完成,這步很快)
         const newW = Math.max(1, Math.floor(fcW * perScale));
         const newH = Math.max(1, Math.floor(fcH * perScale));
         let scaled;
@@ -2106,31 +2179,88 @@ function depStatus() {
           scaled = fullCanvas;
         } else {
           scaled = _newCanvas();
-          scaled.width = newW;
-          scaled.height = newH;
+          scaled.width = newW; scaled.height = newH;
           scaled.getContext('2d').drawImage(fullCanvas, 0, 0, newW, newH);
         }
         const enc = await encodeCanvas(scaled, perQuality, codec);
         if (scaled !== fullCanvas) { scaled.width = scaled.height = 0; }
-
         if (enc && enc.bytes && enc.bytes.length < orig.length) {
           candidates[s][i] = { ...enc, perScale, origLen: orig.length };
           codecWins.set(enc.label || '?', (codecWins.get(enc.label || '?') || 0) + 1);
         }
       }
-      // 統計只算一次(setpoint 共用偵測結果)
       if (isPlate) plateCount++;
       if (isText) textCount++;
-
       fullCanvas.width = fullCanvas.height = 0;
-      setProgress(((i + 1) / items.length) * 100);
-      if (verboseLog && ((i + 1) % 20 === 0 || i === items.length - 1)) {
-        updateLogLine(`  探測 ${i + 1}/${items.length}(${numSp} 版本一次跑)`);
-      }
-      // 每張圖讓事件迴圈呼吸一下,避免大量 WASM 編碼連環跑導致「網頁未回應」
-      // setTimeout(0) ≈ 4ms/張 → 100 張累計 0.4s overhead,換到主執行緒不被 hung
+      updateProgress();
       await new Promise(r => setTimeout(r, 0));
     }
+
+    // ----- 路由:DCT → pool(if pool ready);其他 / pool 失敗 → inline -----
+    const dctIdx = [];
+    const inlineIdx = [];
+    for (let i = 0; i < items.length; i++) {
+      if (pool && items[i].filterType === 'DCTDecode') dctIdx.push(i);
+      else inlineIdx.push(i);
+    }
+
+    // 先派 inline(序列、佔 orchestrator),再派 pool(平行、各 image-worker 上)
+    // 兩者並行跑 — orchestrator inline 處理小批 Flate 時,pool 同時在跑 DCT
+    const inlinePromise = (async () => {
+      for (const i of inlineIdx) {
+        if (i % 5 === 0) checkCancelled();
+        await processInline(i);
+      }
+    })();
+
+    const poolPromise = (async () => {
+      if (!pool || dctIdx.length === 0) return;
+      let nextOff = 0;
+      async function workerLoop(slot) {
+        while (true) {
+          checkCancelled();
+          const off = nextOff++;
+          if (off >= dctIdx.length) return;
+          const i = dctIdx[off];
+          const { obj, filterType } = items[i];
+          const pre = preCalcPerImage(i);
+          if (pre.bgPenalty < 1) bgCount++;
+          try {
+            const result = await dispatchProbe(slot, {
+              idx: i,
+              origBytes: obj.contents,
+              filterType,
+              hasMask: pre.hasMask,
+              shortDim: pre.shortDim,
+              isSmallImage: pre.isSmallImage,
+              boost: pre.boost,
+              bgPenalty: pre.bgPenalty,
+              setpoints,
+              codec,
+            });
+            if (result.candidates) {
+              for (let s = 0; s < numSp; s++) {
+                const cand = result.candidates[s];
+                if (cand) {
+                  candidates[s][i] = cand;
+                  codecWins.set(cand.label || '?', (codecWins.get(cand.label || '?') || 0) + 1);
+                }
+              }
+            }
+            if (result.isPlate) plateCount++;
+            if (result.isText) textCount++;
+            updateProgress();
+          } catch (err) {
+            // worker 失敗 → 退到 inline 處理這張(不丟整批)
+            if (verboseLog) log(`  pool image ${i} failed (${err.message}),退單線程`);
+            await processInline(i);
+          }
+        }
+      }
+      await Promise.all(pool.map(slot => workerLoop(slot)));
+    })();
+
+    await Promise.all([inlinePromise, poolPromise]);
     if (verboseLog) {
       const labelMap = { jp2: 'JP2', mozjpeg: 'Moz', oxipng: 'Oxi', 'canvas-jpg': 'cvs' };
       const parts = ['jp2', 'mozjpeg', 'oxipng', 'canvas-jpg']

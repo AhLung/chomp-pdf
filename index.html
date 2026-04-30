@@ -241,7 +241,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.5.0-h5</span>
+        <span class="v3-badge">v1.5.1</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -401,11 +401,17 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.5.1</strong> · 2026-04-30</div>
+        <ul>
+          <li><strong>圖片並行壓 — 整體快 2-4x</strong>(視機器核心數):自動偵測你電腦核心數開 2-4 個 worker,每張 JPEG 圖在獨立執行緒上壓,M1 Mac / 中階 PC 都會明顯快</li>
+          <li>記憶體上限保護:worker 數最多 4 個,避免低階手機 OOM</li>
+          <li>不支援的瀏覽器(iOS Safari < 17)自動退單線程,結果一致只是慢一點</li>
+          <li>掃描 PDF 內 Flate 圖會留主 worker 處理(dict 解碼複雜),JPEG 圖才上池子 — 多數 PDF 兩種混合,部分加速</li>
+        </ul>
         <div class="cl-ver"><strong>v1.5.0</strong> · 2026-04-30</div>
         <ul>
           <li><strong>主執行緒永不卡</strong>:整個壓縮 pipeline 搬進 Web Worker,壓縮中可以滾動、切換分頁、按取消都即時響應</li>
           <li>不支援的瀏覽器(iOS Safari < 16.4)自動 fallback 主執行緒模式</li>
-          <li>下個版本(v1.5.1)會加 worker pool 並行,實際壓更快 3-5x</li>
         </ul>
         <div class="cl-ver"><strong>v1.4.9</strong> · 2026-04-30</div>
         <ul>
