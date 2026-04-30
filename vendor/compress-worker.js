@@ -2651,8 +2651,17 @@ self.addEventListener('message', async (e) => {
         break;
       }
       case 'compress': {
-        // Phase 2 才實作。現在先回 not-implemented 確認訊息協議能跑
-        self.postMessage({ type: 'error', msg: 'compress not yet implemented in worker (Phase 2)' });
+        // Phase 2.3: 跑全流程 → done 帶 bytes(transferable 零拷貝)
+        _workerCancelled = false;
+        const { file, options } = msg;
+        const bytes = await runCompress(file, options || {});
+        // 確保是 Uint8Array 且 buffer 可 transfer
+        const out = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        self.postMessage({ type: 'done', bytes: out }, [out.buffer]);
+        break;
+      }
+      case 'cancel': {
+        _workerCancelled = true;
         break;
       }
       default:
