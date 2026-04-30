@@ -238,7 +238,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.4.4</span>
+        <span class="v3-badge">v1.4.5</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -398,6 +398,11 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.4.5</strong> · 2026-04-30</div>
+        <ul>
+          <li>大幅減少壓縮中「網頁未回應」對話框 — 每張圖編碼後讓瀏覽器喘息一下</li>
+          <li>文字圖偵測門檻放寬,寬扁的標題 banner 也能進(原本被尺寸 guard 擋掉導致頁面標題仍被壓糊)</li>
+        </ul>
         <div class="cl-ver"><strong>v1.4.4</strong> · 2026-04-30</div>
         <ul>
           <li><strong>自動最佳化模式速度大幅提升</strong>:每張圖只解碼一次給兩個品質版本共用(之前各解碼一次)— 大檔可省 30-50% 探測時間</li>
@@ -2304,8 +2309,9 @@
   // 命中時 recompressImage 強制 scale=1.0 + quality ≥ 0.9 確保文字清楚
   function isTextImage(canvas) {
     const w = canvas.width, h = canvas.height;
-    // 太小不適用(信息圖一般 > 800px 短邊)
-    if (w < 400 || h < 200) return false;
+    // 用面積 + 短邊判斷,讓寬扁 banner 也能進(例如 1500×150 的標題列)
+    if (w * h < 60000) return false;
+    if (w < 200 || h < 80) return false;
     const ctx = canvas.getContext('2d');
     const data = ctx.getImageData(0, 0, w, h).data;
     const BS = 16;
@@ -2386,9 +2392,10 @@
       finalQuality = Math.max(0.3, quality * 0.7);
       plateDetected = true;
     }
-    // 文字圖偵測(整頁信息圖、表格、文字海報):scale 拉回 1.0、quality 拉到 0.92 floor
-    // 必須 plate 不命中才進(plate 跟 text 互斥),且圖夠大才 worth 檢測
-    else if (canvas.width >= 400 && canvas.height >= 200 && isTextImage(canvas)) {
+    // 文字圖偵測(整頁信息圖、表格、文字海報、寬扁標題 banner):
+    // scale 拉回 1.0、quality 拉到 0.92 floor。size guard 放寬到面積 60K 像素 +
+    // 短邊 ≥ 80,讓標題 banner 這類寬扁圖也能進
+    else if (canvas.width * canvas.height >= 60000 && isTextImage(canvas)) {
       textDetected = true;
       finalQuality = Math.max(0.92, quality);
       // 如果 caller 給的 scale < 1.0 就重 decode 全尺寸,不然字會糊
@@ -2711,6 +2718,8 @@
         $log.textContent = lines.join('\n');
         $log.scrollTop = $log.scrollHeight;
       }
+      // 每張圖讓事件迴圈呼吸 → 避免 N 個 WASM 編碼連環跑導致網頁未回應
+      await new Promise(r => setTimeout(r, 0));
     }
     // Codec 統計每次都印(包含上探迭代),用簡短一行格式
     {
@@ -2821,6 +2830,7 @@
       if ((i + 1) % 20 === 0 || i === items.length - 1) {
         updateLogLine(`  探測 ${i + 1}/${items.length}`);
       }
+      await new Promise(r => setTimeout(r, 0));
     }
     if (verboseLog) {
       const labelMap = { jp2: 'JP2', mozjpeg: 'Moz', oxipng: 'Oxi', 'canvas-jpg': 'cvs' };
@@ -2908,9 +2918,10 @@
       let isPlate = false, isText = false;
       if (fcW >= 300 && fcH >= 300) {
         isPlate = isPlateImage(fullCanvas);
-        if (!isPlate && fcW >= 400 && fcH >= 200) {
-          isText = isTextImage(fullCanvas);
-        }
+      }
+      // textImage 用面積判:寬扁標題 banner 也要能進(plate 跟 text 互斥)
+      if (!isPlate && fcW * fcH >= 60000 && fcW >= 200 && fcH >= 80) {
+        isText = isTextImage(fullCanvas);
       }
 
       for (let s = 0; s < numSp; s++) {
@@ -2965,6 +2976,9 @@
       if (verboseLog && ((i + 1) % 20 === 0 || i === items.length - 1)) {
         updateLogLine(`  探測 ${i + 1}/${items.length}(${numSp} 版本一次跑)`);
       }
+      // 每張圖讓事件迴圈呼吸一下,避免大量 WASM 編碼連環跑導致「網頁未回應」
+      // setTimeout(0) ≈ 4ms/張 → 100 張累計 0.4s overhead,換到主執行緒不被 hung
+      await new Promise(r => setTimeout(r, 0));
     }
     if (verboseLog) {
       const labelMap = { jp2: 'JP2', mozjpeg: 'Moz', oxipng: 'Oxi', 'canvas-jpg': 'cvs' };
