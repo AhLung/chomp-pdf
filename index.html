@@ -263,13 +263,7 @@
     <!-- Codec status banner (only when引擎載入失敗) -->
     <div id="codecStatus"></div>
 
-    <!-- 體檢卡(file analyzed 後出現) -->
-    <div class="v3-card analyzed-only">
-      <div class="v3-card-h"><span class="dot dot-pink"></span>檔案體檢</div>
-      <div id="analysis"></div>
-    </div>
-
-    <!-- 設定卡 -->
+    <!-- 設定卡(放上面,離壓縮按鈕近) -->
     <div class="v3-card analyzed-only">
       <div class="v3-card-h"><span class="dot dot-violet"></span>設定</div>
 
@@ -311,11 +305,17 @@
       </div>
     </div>
 
-    <!-- 開始壓縮按鈕 -->
+    <!-- 開始壓縮按鈕(放在設定卡正下方,離手最近) -->
     <button class="v3-go analyzed-only" id="go" disabled>🚀 開始壓縮</button>
     <div class="v3-btn-row analyzed-only">
       <button type="button" class="v3-sec" id="resetBtn">換檔案</button>
       <button type="button" class="v3-sec" id="cancel" hidden>取消壓縮中…</button>
+    </div>
+
+    <!-- 體檢卡(放壓縮按鈕下方,當作補充資訊) -->
+    <div class="v3-card analyzed-only">
+      <div class="v3-card-h"><span class="dot dot-pink"></span>檔案體檢</div>
+      <div id="analysis"></div>
     </div>
 
     <!-- 壓縮中卡 -->
@@ -388,7 +388,7 @@
         </details>
         <details>
           <summary>用了什麼技術?</summary>
-          <p>瀏覽器原生 + WebAssembly：pdf-lib、pdf.js、MozJPEG、JPEG 2000 (OpenJPEG)、OxiPNG。每張圖會跑多種編碼器賽馬，挑最小的。</p>
+          <p>瀏覽器原生 + WebAssembly：pdf-lib、pdf.js、MozJPEG、JPEG 2000、OxiPNG。每張圖會同時用幾種不同的壓縮方式試一次,然後挑出最小張的版本放回 PDF 裡。</p>
         </details>
       </div>
     </div>
