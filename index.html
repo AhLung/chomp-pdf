@@ -516,7 +516,7 @@
 </head>
 <body>
 
-<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.3.3</span></h1>
+<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.3.4</span></h1>
 <div class="sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
 
 <label id="drop" for="file">
@@ -590,6 +590,11 @@
 <details class="changelog">
   <summary>📋 更新記錄</summary>
   <div class="changelog-body">
+    <div class="cl-ver"><strong>v1.3.4</strong> · 2026-04-30</div>
+    <ul>
+      <li>JPEG 2000 編碼重新啟用 — 修了背後讓圖片在某些觀看器破碎的根本原因(JS 端餵給編碼器的色彩通道排列方式錯誤),不再依賴關閉它來迴避</li>
+      <li>JPX 加保護機制:只在大圖 + 中高畫質才開,輸出明顯異常會自動退回 MozJPEG</li>
+    </ul>
     <div class="cl-ver"><strong>v1.3.3</strong> · 2026-04-30</div>
     <ul>
       <li>檔案分析卡搬到「壓縮」按鈕下方,按鈕位置從此固定不再飄</li>
@@ -795,17 +800,29 @@
     return { idat, width, height, bitDepth, colors, colorspace };
   }
 
-  // 編碼策略:序列跑 MozJPEG +(小圖 OxiPNG),取最小
-  // JPX 路徑禁用 — sub-agent 用 opj_dump 拆檔證實,我們的 encodeCanvasToJpx 對
-  // 有 SMask 的彩色照片(如台灣地圖)會輸出量化參數壞掉的 raw J2K codestream,
-  // OpenJPEG 解出來色彩通道幾乎全部抹除(84% 像素 R≈G≈B 變灰階)+ 橫向 3x
-  // 重複劣化結構。MozJPEG 一直都是好的,直接 fallback 即可。順帶探測快 30-50%。
+  // 編碼策略:序列跑 JP2 + MozJPEG +(小圖 OxiPNG),取最小
+  // JPX root cause 已修(encodeCanvasToJpx 內部 buffer 從 planar 改 interleaved,
+  // 對應 chafey/openjpegjs 的 i*compCount+compno 讀法)— 之前色彩塌陷+橫向 3x
+  // 重複的破碎結果就是這條漏餵的鍋。修完賽馬重新有 3 個 codec。
   async function encodeCanvas(canvas, quality, codec) {
     const W = canvas.width, H = canvas.height;
     const isSmall = (W * H <= 240 * 240);
     let imgData = null;
     const getImgData = () => imgData || (imgData = canvasToImageData(canvas));
     const results = [];
+
+    // JP2(JPEG 2000)— 大圖才跑,小圖 MozJPEG 通常更小;低品質 JPX 對含 SMask
+    // 圖反而容易出問題(quantization 過度),設品質下限 0.55 才開
+    if (!isSmall && quality >= 0.55) {
+      try {
+        const ratio = Math.max(5, Math.min(80, 12 / Math.max(0.1, quality)));
+        const bytes = await encodeCanvasToJpx(canvas, ratio);
+        // size sanity:JPX 編碼有時崩潰會輸出空 / 過小 codestream
+        if (bytes && bytes.length > 200) {
+          results.push({ bytes, filter: 'JPXDecode', label: 'jp2' });
+        }
+      } catch (_) {}
+    }
 
     // MozJPEG(WASM fallback to canvas JPEG)
     if (window.JsCodecs && window.JsCodecs.encodeMozJpeg) {
