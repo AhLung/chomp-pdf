@@ -56,6 +56,13 @@ function depStatus() {
   // ===== fmtMB (index.html L2045-2045) =====
   const fmtMB = (bytes) => (bytes / 1024 / 1024).toFixed(2) + ' MB';
 
+  // ===== _newCanvas (worker-only helper:OffscreenCanvas wrapper)
+  // 主執行緒原本用 document.createElement('canvas'),inject 時改成 _newCanvas()。
+  // OffscreenCanvas 構造要 w/h(隨後 .width/.height 可改),所以給 1x1 placeholder。
+  function _newCanvas(w = 1, h = 1) {
+    return new OffscreenCanvas(w, h);
+  }
+
   // ===== canvasToImageData (index.html L687-690) =====
   function canvasToImageData(canvas) {
     const c = canvas.getContext('2d');
