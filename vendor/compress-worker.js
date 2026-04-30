@@ -215,6 +215,22 @@ function depStatus() {
     return out;
   }
 
+  // ===== applyTiffPredictor (index.html L900-913) =====
+  function applyTiffPredictor(raw, columns, colors, bits) {
+    if (bits !== 8) return null;
+    const rowBytes = columns * colors;
+    const numRows = Math.floor(raw.length / rowBytes);
+    const out = new Uint8Array(numRows * rowBytes);
+    for (let y = 0; y < numRows; y++) {
+      const off = y * rowBytes;
+      for (let x = 0; x < rowBytes; x++) {
+        const prev = x >= colors ? out[off + x - colors] : 0;
+        out[off + x] = (raw[off + x] + prev) & 0xFF;
+      }
+    }
+    return out;
+  }
+
   // ===== unpackBits (index.html L915-937) =====
   function unpackBits(raw, columns, rows, colors, bits) {
     if (bits === 8) return raw;
@@ -1189,6 +1205,27 @@ function depStatus() {
       } catch (_) {}
     }
     return { count, saved };
+  }
+
+  // ===== validateMaskRefs (index.html L1612-1630) =====
+  function validateMaskRefs(pdfDoc) {
+    const ctx = pdfDoc.context;
+    const { PDFName, PDFRawStream } = PDFLib;
+    let problems = 0;
+    ctx.enumerateIndirectObjects().forEach(([_, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const d = obj.dict;
+      for (const k of ['SMask', 'Mask']) {
+        const v = d.get(PDFName.of(k));
+        if (v instanceof PDFLib.PDFRef) {
+          try {
+            const t = ctx.lookup(v);
+            if (!t) problems++;
+          } catch (_) { problems++; }
+        }
+      }
+    });
+    return problems;
   }
 
   // ===== garbageCollect (index.html L1632-1698) =====
