@@ -185,15 +185,10 @@
   }
   /* 跟在 checkbox 後面的 hint:不要套 row 的 label 縮排,直接靠左對齊 */
   #targetCheckHint { padding-left: 0; margin-top: 2px; }
-  /* 「壓縮」按鈕 sticky 在底部:檔案載入後分析卡會把畫面撐長,
-     按鈕仍卡在視窗底部,不用滾動才找得到 */
+  /* 「壓縮」按鈕區隔:加分隔線視覺上區分動作區跟資訊區 */
   .action-row {
-    position: sticky;
-    bottom: 8px;
-    background: var(--bg);
-    padding: 10px 0;
     margin-top: 14px;
-    z-index: 5;
+    padding-top: 14px;
     border-top: 1px solid var(--border);
   }
   .radio {
@@ -521,7 +516,7 @@
 </head>
 <body>
 
-<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.3.2</span></h1>
+<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.3.3</span></h1>
 <div class="sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
 
 <label id="drop" for="file">
@@ -531,7 +526,6 @@
 <input type="file" id="file" accept="application/pdf">
 <div id="fileInfo"></div>
 <div id="codecStatus" style="font-size:11px;color:#888;margin:4px 0;"></div>
-<div id="analysis"></div>
 
 <!-- 目標類型 radio:暫時藏起來,只走「縮到指定大小」 -->
 <div class="row mode-row" style="display:none">
@@ -585,6 +579,9 @@
   <button id="cancel" hidden>取消</button>
 </div>
 
+<!-- 檔案分析卡放壓縮按鈕「下面」:這樣按鈕位置不會因為檔案大小不同而上下飄 -->
+<div id="analysis"></div>
+
 <div id="log"></div>
 <a id="download" download>下載結果</a>
 
@@ -593,9 +590,12 @@
 <details class="changelog">
   <summary>📋 更新記錄</summary>
   <div class="changelog-body">
+    <div class="cl-ver"><strong>v1.3.3</strong> · 2026-04-30</div>
+    <ul>
+      <li>檔案分析卡搬到「壓縮」按鈕下方,按鈕位置從此固定不再飄</li>
+    </ul>
     <div class="cl-ver"><strong>v1.3.2</strong> · 2026-04-30</div>
     <ul>
-      <li>「壓縮」按鈕固定在視窗底部,不會因為上方分析卡跑掉</li>
       <li>修正勾選提示文字</li>
     </ul>
     <div class="cl-ver"><strong>v1.3.1</strong> · 2026-04-30</div>
