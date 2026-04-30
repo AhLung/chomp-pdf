@@ -2691,9 +2691,10 @@
     const pdfDoc = await PDFLib.PDFDocument.load(prepBytes, { updateMetadata: false });
     const items = await collectImageStreams(pdfDoc);
 
+    let smaskScale = 0.65; // skip 時 caller 自己已經套過 0.65
     if (!skipSmaskDownscale) {
       setProgressPhase(0, 8);
-      const smaskScale = quality < 0.5 ? 0.45 : quality < 0.75 ? 0.6 : 0.75;
+      smaskScale = quality < 0.5 ? 0.45 : quality < 0.75 ? 0.6 : 0.75;
       if (verboseLog) log(`  遮色片瘦身(×${smaskScale})`);
       await downscaleSMasks(pdfDoc, smaskScale, (i, t) => setProgress((i / t) * 100));
     }
