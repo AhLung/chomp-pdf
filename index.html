@@ -238,7 +238,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.4.5</span>
+        <span class="v3-badge">v1.4.6</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -398,6 +398,10 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.4.6</strong> · 2026-04-30</div>
+        <ul>
+          <li><strong>修正頁面標題仍被壓糊的真兇</strong> — 之前的猜測都修錯地方。標題文字其實是燒在「透明遮色片」裡,而瘦身遮色片那條路徑沒做文字偵測 → 銳利字邊被無差別縮放鋸齒化。現在加了文字遮色片偵測,命中就保持原解析度。</li>
+        </ul>
         <div class="cl-ver"><strong>v1.4.5</strong> · 2026-04-30</div>
         <ul>
           <li>大幅減少壓縮中「網頁未回應」對話框 — 每張圖編碼後讓瀏覽器喘息一下</li>
@@ -1203,7 +1207,7 @@
       targets.push({ ref, obj, dict });
     });
 
-    let count = 0, saved = 0;
+    let count = 0, saved = 0, textMaskSkipped = 0;
     for (let i = 0; i < targets.length; i++) {
       if (i % 20 === 0) {
         checkCancelled();
@@ -1214,6 +1218,45 @@
       const decoded = decodeFlateImage(obj.contents, dict, ctx);
       if (!decoded) continue;
       const { width, height, imgData } = decoded;
+
+      // 文字 mask 偵測:文字通常是「純黑背景 + 純白字」(或反之),
+      // 雙峰直方圖 + 高邊緣密度。命中就 skip downscale,避免文字邊緣鋸齒化。
+      // 這是 page 19 標題「食在不見山」變馬賽克的真兇 — 之前 downscaleSMasks 對所有
+      // SMask 一律 ×0.65,把銳利的文字 mask 邊緣模糊化。
+      if (width >= 200 && height >= 80 && width * height >= 60000) {
+        const data = imgData.data;
+        const total = width * height;
+        let darkCount = 0, lightCount = 0;
+        const step = Math.max(1, Math.floor(total / 8000));
+        let sampled = 0;
+        for (let p = 0; p < total; p += step) {
+          const v = data[p * 4]; // grayscale R channel
+          if (v < 30) darkCount++;
+          else if (v > 225) lightCount++;
+          sampled++;
+        }
+        const darkPct = darkCount / sampled;
+        const lightPct = lightCount / sampled;
+        // 邊緣密度:取若干 row 算相鄰差 > 100 的比例
+        let edges = 0, edgeChecks = 0;
+        const rowStep = Math.max(1, Math.floor(height / 40));
+        for (let y = 0; y < height; y += rowStep) {
+          let prev = data[y * width * 4];
+          for (let x = 1; x < width; x++) {
+            const v = data[(y * width + x) * 4];
+            if (Math.abs(v - prev) > 100) edges++;
+            prev = v;
+            edgeChecks++;
+          }
+        }
+        const edgePct = edges / Math.max(1, edgeChecks);
+        // 雙峰(>=30% 純黑 + >=30% 純白)+ 邊緣密度 >= 1% → 文字 mask
+        if (darkPct >= 0.3 && lightPct >= 0.3 && edgePct >= 0.01) {
+          textMaskSkipped++;
+          continue;
+        }
+      }
+
       const newW = Math.max(1, Math.floor(width * scaleFactor));
       const newH = Math.max(1, Math.floor(height * scaleFactor));
       if (newW >= width || newH >= height) continue;
@@ -1240,7 +1283,7 @@
         count++;
       }
     }
-    return { count, saved };
+    return { count, saved, textMaskSkipped };
   }
 
   // 對所有 FlateDecode stream lossless 重壓(image / content stream / CharProcs / Form / ICC / 字體 等都涵蓋)
@@ -2591,7 +2634,8 @@
     if (opts.smaskScale) {
       setProgressPhase(32, 4);
       log2(`  遮色片瘦身(×${opts.smaskScale})...`);
-      await downscaleSMasks(pdfDoc, opts.smaskScale, (i, t) => setProgress((i / t) * 100));
+      const smRes = await downscaleSMasks(pdfDoc, opts.smaskScale, (i, t) => setProgress((i / t) * 100));
+      if (smRes.textMaskSkipped > 0) log2(`  其中 ${smRes.textMaskSkipped} 個是文字遮色片(保留銳利不縮)`);
     }
 
     setProgressPhase(opts.smaskScale ? 36 : 32, 5);
