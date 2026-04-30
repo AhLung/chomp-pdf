@@ -116,7 +116,7 @@
   .v3-ba-card .val { font-size: 24px; font-weight: 700; }
   .v3-ba-arrow { font-size: 22px; color: var(--mint); text-align: center; }
   .v3-savings { text-align: center; font-size: 20px; font-weight: 700; color: var(--mint); margin: 4px 0 12px; }
-  .v3-dl { display: block; text-align: center; padding: 12px; border-radius: var(--r-sm); background: var(--mint); color: #fff !important; text-decoration: none; font-weight: 700; font-size: 15px; }
+  .v3-dl { display: block; width: 100%; text-align: center; padding: 12px; border-radius: var(--r-sm); background: var(--mint); color: #fff !important; text-decoration: none; font-weight: 700; font-size: 15px; overflow-wrap: anywhere; word-break: break-all; }
   .v3-dl:hover { background: #2bb888; }
 
   /* 錯誤卡 */
@@ -241,7 +241,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.5.2</span>
+        <span class="v3-badge">v1.5.3</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -401,6 +401,12 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.5.3</strong> · 2026-04-30</div>
+        <ul>
+          <li><strong>修壓縮中鯊魚 🦈 跟恐龍 🦖 不見了</strong> — Web Worker 模式進度只走簡化 path,沒觸發 mascot 的 startRace / setProgress(主執行緒模式才有)。現在 worker 模式也會啟動賽跑、跟著進度移動、最後揭曉冠軍</li>
+          <li><strong>並行池上限拉高(4 → 8)</strong>:M5 / M3 Pro / Threadripper 等 12+ 核機器之前只開 4 個 worker 浪費 CPU。現在依 `hardwareConcurrency-1` 動態,上限 8。低階機(2-4 核)還是保守給 hc-1,不會炸記憶體</li>
+          <li>下載按鈕長檔名不再撐爆寬度 — 加 `width: 100%` + `overflow-wrap: anywhere`,跟下方「再壓一份」對齊</li>
+        </ul>
         <div class="cl-ver"><strong>v1.5.2</strong> · 2026-04-30</div>
         <ul>
           <li><strong>清理階段加速 30-40%</strong>:把 v1.4.x 主執行緒時代留下來「保護 UI」的過密 yield 拉回合理間隔(GC 從每 300 個物件 yield → 每 5000 個,worker 內主執行緒已釋放,過密 yield 純損耗)</li>
@@ -3769,20 +3775,25 @@
     if (!got || !got.allOk) throw new Error('worker not ready');
     const { worker } = got;
     const fileBuf = await file.arrayBuffer();
+    // v1.5.3:啟動鯊魚恐龍賽跑(主執行緒 mascot 要 startRace 才會初始化 CSS 變數)
+    startRace();
     return new Promise((resolve, reject) => {
       const onMsg = (e) => {
         const m = e.data;
         if (m.type === 'progress') {
-          // worker 端已算完整 pct,直接顯示
-          if (window.ChompUI) window.ChompUI.setProgressDisplay(m.pct);
+          // worker 已算完整全域 pct(0-100),用主執行緒的 setProgress(同時更新進度條 + mascot)
+          // 此時 progressBase=0/range=100(startRace 設的),local==global,直接傳
+          setProgress(m.pct);
         } else if (m.type === 'log-replace') {
           $log.textContent = m.text;
           $log.scrollTop = $log.scrollHeight;
         } else if (m.type === 'done') {
           worker.removeEventListener('message', onMsg);
+          declareWinner();
           resolve(m.bytes);
         } else if (m.type === 'error') {
           worker.removeEventListener('message', onMsg);
+          stopHeartbeat();
           reject(new Error(m.msg || 'worker error'));
         }
       };

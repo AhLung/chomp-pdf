@@ -59,8 +59,10 @@ let _imagePoolPromise = null; // 初始化中的 promise(避免 race)
 const POOL_SIZE = (() => {
   try {
     const hc = self.navigator?.hardwareConcurrency || 4;
-    // 留 1 核給 orchestrator + UI thread,上限 4 避免低階機 OOM
-    return Math.max(1, Math.min(4, hc - 1));
+    // v1.5.3:上限 4 → 8。M5 / M3 Pro / Threadripper 之類有 12+ 核的機器,
+    // 4 個 worker 完全沒榨出來。每 worker ~50-100MB heap,8 worker ≈ 600MB,
+    // 對 16GB+ 的機器可接受。低階機(2-4 核)還是只給 hc-1,不會炸記憶體
+    return Math.max(2, Math.min(8, hc - 1));
   } catch (_) { return 2; }
 })();
 
