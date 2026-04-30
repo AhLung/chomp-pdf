@@ -508,7 +508,7 @@
 </head>
 <body>
 
-<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.3.0</span></h1>
+<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.3.1</span></h1>
 <div class="sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
 
 <label id="drop" for="file">
@@ -580,6 +580,11 @@
 <details class="changelog">
   <summary>📋 更新記錄</summary>
   <div class="changelog-body">
+    <div class="cl-ver"><strong>v1.3.1</strong> · 2026-04-30</div>
+    <ul>
+      <li>關閉 JPEG 2000 編碼(這次有證據):sub-agent 用 opj_dump 拆檔證實 OpenJPEG WASM 對含 SMask 的彩色照片會輸出量化參數壞掉的 raw J2K,解碼後色彩通道幾乎抹除 — Page 9 台灣地圖渲染破碎的真正原因</li>
+      <li>探測加速:auto 模式把遮色片瘦身搬到 probe 外面跑一次(兩個 probe + 拼合共用),省 1/3 時間;搭配少一個 codec 整體探測快 40-50%</li>
+    </ul>
     <div class="cl-ver"><strong>v1.3.0</strong> · 2026-04-30</div>
     <ul>
       <li>修正 macOS Preview 圖片消失的真正原因 — pdf-lib minify 後 class 名被縮寫,SMask 偵測失效讓 SMask 被當主圖重壓成 RGB JPEG,違反 PDF 規範</li>
@@ -772,22 +777,17 @@
     return { idat, width, height, bitDepth, colors, colorspace };
   }
 
-  // 編碼策略:序列跑 JP2 + MozJPEG +(小圖 OxiPNG),取最小
-  // 之前曾以為 macOS Preview 渲染失敗是 JPX 相容性問題,實際 root cause 是 SMask
-  // ColorSpace bug(constructor.name 在 minify 後 mangle),已修;JPX 重新啟用
+  // 編碼策略:序列跑 MozJPEG +(小圖 OxiPNG),取最小
+  // JPX 路徑禁用 — sub-agent 用 opj_dump 拆檔證實,我們的 encodeCanvasToJpx 對
+  // 有 SMask 的彩色照片(如台灣地圖)會輸出量化參數壞掉的 raw J2K codestream,
+  // OpenJPEG 解出來色彩通道幾乎全部抹除(84% 像素 R≈G≈B 變灰階)+ 橫向 3x
+  // 重複劣化結構。MozJPEG 一直都是好的,直接 fallback 即可。順帶探測快 30-50%。
   async function encodeCanvas(canvas, quality, codec) {
     const W = canvas.width, H = canvas.height;
     const isSmall = (W * H <= 240 * 240);
     let imgData = null;
     const getImgData = () => imgData || (imgData = canvasToImageData(canvas));
     const results = [];
-
-    // JP2
-    try {
-      const ratio = Math.max(5, Math.min(150, 15 / Math.max(0.1, quality)));
-      const bytes = await encodeCanvasToJpx(canvas, ratio);
-      results.push({ bytes, filter: 'JPXDecode', label: 'jp2' });
-    } catch (_) {}
 
     // MozJPEG(WASM fallback to canvas JPEG)
     if (window.JsCodecs && window.JsCodecs.encodeMozJpeg) {
@@ -2678,7 +2678,7 @@
 
   // ==== 多版本探測 + 揹包問題拼合 ====
   // 跑一個 setpoint(scale, quality)取得每張圖的 candidate(不 save、不改原 PDF)
-  async function buildPreservePdfProbe(prepBytes, scale, quality, codec, verboseLog) {
+  async function buildPreservePdfProbe(prepBytes, scale, quality, codec, verboseLog, skipSmaskDownscale = false) {
     const updateLogLine = (prefix) => {
       const had = $log.textContent.endsWith('\n');
       const lines = $log.textContent.split('\n');
@@ -2691,10 +2691,12 @@
     const pdfDoc = await PDFLib.PDFDocument.load(prepBytes, { updateMetadata: false });
     const items = await collectImageStreams(pdfDoc);
 
-    setProgressPhase(0, 8);
-    const smaskScale = quality < 0.5 ? 0.45 : quality < 0.75 ? 0.6 : 0.75;
-    if (verboseLog) log(`  遮色片瘦身(×${smaskScale})`);
-    await downscaleSMasks(pdfDoc, smaskScale, (i, t) => setProgress((i / t) * 100));
+    if (!skipSmaskDownscale) {
+      setProgressPhase(0, 8);
+      const smaskScale = quality < 0.5 ? 0.45 : quality < 0.75 ? 0.6 : 0.75;
+      if (verboseLog) log(`  遮色片瘦身(×${smaskScale})`);
+      await downscaleSMasks(pdfDoc, smaskScale, (i, t) => setProgress((i / t) * 100));
+    }
 
     // 分配 / Fovea 計算
     const itemDims = items.map((it, idx) => {
@@ -2856,18 +2858,22 @@
   }
 
   // 拼合:用揹包選擇,套用到 PDF 並 save
-  async function assembleFinalPdf(prepBytes, setpoints, probeResults, choices, verboseLog) {
+  async function assembleFinalPdf(prepBytes, setpoints, probeResults, choices, verboseLog, skipSmaskDownscale = false) {
     const pdfDoc = await PDFLib.PDFDocument.load(prepBytes, { updateMetadata: false });
     const items = await collectImageStreams(pdfDoc);
-    // SMask:用 MID setpoint(中間值)的 smaskScale,當作折衷
-    const midSp = setpoints.reduce((acc, sp) => acc.quality < sp.quality ? acc : sp); // 找最低 quality
-    // 其實取「中間」更好,但簡單先用最高 quality 的 smaskScale(細緻)
-    const highSp = setpoints.reduce((acc, sp) => acc.quality > sp.quality ? acc : sp);
-    const useQ = highSp.quality;
-    const smaskScale = useQ < 0.5 ? 0.45 : useQ < 0.75 ? 0.6 : 0.75;
-    if (verboseLog) log(`  遮色片瘦身(使用最高畫質設定)...`);
-    setProgressPhase(0, 10);
-    await downscaleSMasks(pdfDoc, smaskScale, (i, t) => setProgress((i / t) * 100));
+    if (!skipSmaskDownscale) {
+      // SMask:用 MID setpoint(中間值)的 smaskScale,當作折衷
+      const midSp = setpoints.reduce((acc, sp) => acc.quality < sp.quality ? acc : sp); // 找最低 quality
+      // 其實取「中間」更好,但簡單先用最高 quality 的 smaskScale(細緻)
+      const highSp = setpoints.reduce((acc, sp) => acc.quality > sp.quality ? acc : sp);
+      const useQ = highSp.quality;
+      const smaskScale = useQ < 0.5 ? 0.45 : useQ < 0.75 ? 0.6 : 0.75;
+      if (verboseLog) log(`  遮色片瘦身(使用最高畫質設定)...`);
+      setProgressPhase(0, 10);
+      await downscaleSMasks(pdfDoc, smaskScale, (i, t) => setProgress((i / t) * 100));
+    } else {
+      setProgressPhase(0, 5);
+    }
 
     setProgressPhase(10, 70);
     let applied = 0;
@@ -3310,22 +3316,31 @@
     log(`模式:保留文字 · 自動最佳化(雙版本探測 + 智慧拼合)`);
     const origBuf = await file.arrayBuffer();
     log(`讀取 PDF ...`);
-    setProgressPhase(0, 25);
-    const prepBytes = await prepareDocumentBytes(origBuf, log);
+    setProgressPhase(0, 22);
+    const rawPrepBytes = await prepareDocumentBytes(origBuf, log);
+
+    // 把 SMask 統一在 probe 外面降一次(兩個 probe + 拼合都共用),省掉重複工作
+    setProgressPhase(22, 6);
+    log(`遮色片瘦身(×0.65 · 雙 probe 共用)...`);
+    const smaskDoc = await PDFLib.PDFDocument.load(rawPrepBytes, { updateMetadata: false });
+    await downscaleSMasks(smaskDoc, 0.65, (i, t) => setProgress((i / t) * 100));
+    await yieldToMain();
+    const prepBytes = await smaskDoc.save({ useObjectStreams: true });
+    await yieldToMain();
 
     const setpoints = [
       { scale: 1.0, quality: 0.85, label: 'H' },  // 高畫質:1:1 解析度 + 85%
       { scale: 0.7, quality: 0.62, label: 'L' },  // 低畫質:縮 70% + 62%
     ];
 
-    setProgressPhase(25, 60);
+    setProgressPhase(28, 57);
     const probeResults = [];
     for (let s = 0; s < setpoints.length; s++) {
       const sp = setpoints[s];
       const spLabel = sp.label === 'H' ? '高' : '低';
       log(`\n[第 ${s + 1} 次:${spLabel}畫質測試](縮放 ${Math.round(sp.scale * 100)}% · 畫質 ${Math.round(sp.quality * 100)}%)`);
       startRace();
-      const probe = await buildPreservePdfProbe(prepBytes, sp.scale, sp.quality, codec, true);
+      const probe = await buildPreservePdfProbe(prepBytes, sp.scale, sp.quality, codec, true, true);
       probeResults.push(probe);
     }
 
@@ -3350,7 +3365,7 @@
 
     setProgressPhase(85, 15);
     startRace();
-    const finalBytes = await assembleFinalPdf(prepBytes, setpoints, probeResults, choices, true);
+    const finalBytes = await assembleFinalPdf(prepBytes, setpoints, probeResults, choices, true, true);
     if (finalBytes.length >= file.size) {
       log(`\n⚠ 壓縮後反而較大,自動退回原檔`);
       return new Uint8Array(origBuf);

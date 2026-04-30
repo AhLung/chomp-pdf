@@ -30,6 +30,10 @@
 
 ## 更新記錄
 
+### v1.3.1（2026-04-30）
+- 關閉 JPEG 2000 編碼（這次有證據）：sub-agent 用 opj_dump 拆檔證實 OpenJPEG WASM 對含 SMask 的彩色照片會輸出量化參數壞掉的 raw J2K，解碼後色彩通道幾乎抹除 — Page 9 台灣地圖渲染破碎的真正原因
+- 探測加速：auto 模式把遮色片瘦身搬到 probe 外面跑一次（兩個 probe + 拼合共用），省 1/3 時間；搭配少一個 codec 整體探測快 40-50%
+
 ### v1.3.0（2026-04-30）
 - 修正 macOS Preview 圖片消失的真正原因 — pdf-lib minify 後 class 名被縮寫，SMask 偵測失效讓 SMask 被當主圖重壓成 RGB JPEG，違反 PDF 規範
 - 重新啟用 JPEG 2000 編碼（上一版錯誤關掉了，事實上跟相容性問題無關）
