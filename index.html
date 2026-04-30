@@ -237,7 +237,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.4.0</span>
+        <span class="v3-badge">v1.4.1</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -397,6 +397,12 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.4.1</strong> · 2026-04-30</div>
+        <ul>
+          <li>限制大小設太小時不再失敗 — 改成輸出能達到的最小版本 + 提示</li>
+          <li>分析卡推薦文字小調(配合設定卡上移)</li>
+          <li>設定卡跟檔案體檢卡交換位置 — 設定離壓縮按鈕近、體檢當補充資訊</li>
+        </ul>
         <div class="cl-ver"><strong>v1.4.0</strong> · 2026-04-30</div>
         <ul>
           <li>整體版面重新設計 — 主視覺粉橘漸層、清楚的階段分區、深色模式</li>
@@ -1972,7 +1978,7 @@
         ${a.cBytes > 0 ? `<span><span class="d" style="background:#8b5cf6"></span>特殊 ${fmtMB(a.cBytes)}</span>` : ''}
         <span><span class="d" style="background:#b8a898"></span>文字 ${fmtMB(a.textOtherBytes)}</span>
       </div>
-      <div class="v3-rec">💡 預設「自動最佳化」即可。若想限制大小,勾下方並設 <strong>${recommendedMB} MB</strong>(已預填)。</div>
+      <div class="v3-rec">💡 預設「自動最佳化」即可。若要指定大小,勾「限制大小」並輸入想要的 MB(建議 ≥ <strong>${recommendedMB} MB</strong>)。</div>
     `;
     $analysis.style.display = 'block';
     // 強制 preserve mode + 自動填入推薦值(用戶手動改過後仍尊重)
@@ -2148,6 +2154,7 @@
     const MAX_TRIES = 5;
     const history = [];
     let lastBytes = null;
+    let smallestBytes = null; // 記錄探索過程中最小的版本(達不到目標時 fallback)
     const rasterBuildFn = (s, q) => buildPdf(pages, s, q, (n, total) => {
       const lines = $log.textContent.split('\n');
       lines[lines.length - 1] = `  渲染 ${n}/${total}`;
@@ -2160,6 +2167,7 @@
       startRace();
       const bytes = await rasterBuildFn(scale, quality);
       log(`  → ${fmtMB(bytes.length)}`);
+      if (!smallestBytes || bytes.length < smallestBytes.length) smallestBytes = bytes;
       if (bytes.length <= targetBytes) {
         let best = { scale, quality, r: compressRatioOf(scale, quality), bytes };
         best = await tryUpQuality(rasterBuildFn, best, targetBytes, history[history.length - 1], MAX_SCALE, 0.95);
@@ -2170,7 +2178,8 @@
       history.push({ scale, quality, r: compressRatioOf(scale, quality), bytes: bytes.length });
       [scale, quality] = refineParams(scale, quality, bytes.length, targetBytes, MAX_SCALE, 0.95);
     }
-    throw new Error(`試 ${MAX_TRIES} 次壓不到目標,最後 ${fmtMB(lastBytes.length)}。請調大目標,或改「保留文字」模式。`);
+    log(`\n⚠ 達不到目標 ${fmtMB(targetBytes)},已壓到極限 ${fmtMB(smallestBytes.length)},仍輸出最小版本給你`);
+    return smallestBytes;
   }
 
   const MAX_CANVAS_DIM = 8192; // 保守 cap,避免瀏覽器 OOM
@@ -2935,12 +2944,14 @@
     const MAX_TRIES = 5;
     const history = []; // [{scale, quality, r, bytes}]
     let lastBytes = null;
+    let smallestBytes = null; // 達不到目標時 fallback 到最小版本
 
     for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
       log(`\n[第 ${attempt} 次](縮放 ${Math.round(scale * 100)}% · 畫質 ${Math.round(quality * 100)}%)`);
       startRace();
       const bytes = await buildPreservePdf(prepBytes, scale, quality, codec, true);
       log(`  → ${fmtMB(bytes.length)}`);
+      if (!smallestBytes || bytes.length < smallestBytes.length) smallestBytes = bytes;
       if (bytes.length <= targetBytes) {
         // 達標 → 啟動「多版本探測 + 智慧拼合」(取代盲目 upProbe)
         log(`\n[達標!] 開始微調,找最佳畫質組合`);
@@ -2974,17 +2985,17 @@
       lastBytes = bytes;
       history.push({ scale, quality, r: compressRatioOf(scale, quality), bytes: bytes.length });
 
-      // 邊際效益檢查(第 2 次以後)
+      // 邊際效益檢查(第 2 次以後):再縮也省不了多少 → 直接給用戶最小版本
       if (history.length >= 2) {
         const prev = history[history.length - 2];
         const curr = history[history.length - 1];
         const marginal = (prev.bytes - curr.bytes) / prev.bytes;
         if (marginal < 0.03 && curr.bytes > targetBytes * 1.05) {
-          throw new Error(
-            `已經壓到這個模式的極限(${fmtMB(curr.bytes)})。\n` +
-            `文字、字體、向量圖本身就佔這麼多空間,無法再壓。\n` +
-            `→ 想更小請改「整頁轉圖片」模式,可壓到 ${fmtMB(targetBytes)}(缺點是文字不能再複製)。`
-          );
+          log(`\n⚠ 已經壓到這個模式的極限(${fmtMB(smallestBytes.length)},未達目標 ${fmtMB(targetBytes)})`);
+          log(`  文字、字體、向量圖本身就佔這麼多空間,無法再壓`);
+          log(`  → 想更小請改「轉圖片」模式(缺點:文字不能再複製)`);
+          log(`✓ 仍輸出最小版本給你`);
+          return smallestBytes;
         }
       }
 
@@ -3006,12 +3017,12 @@
       if (est) {
         log(`  估算:文字字體向量 ≈ ${fmtMB(est.C)}、可壓縮圖 ≈ ${fmtMB(est.J)}`);
         if (est.C >= targetBytes * 0.95) {
-          throw new Error(
-            `這個 PDF 光是文字、字體、向量圖就佔 ${fmtMB(est.C)},` +
-            `超過你設的目標 ${fmtMB(targetBytes)}。\n` +
-            `不管怎麼壓圖都卡在這附近下不去。\n` +
-            `→ 想達標請改「整頁轉圖片」模式(缺點是文字不能再複製)。`
-          );
+          // 文字 / 字體 / 向量本身就超目標 → 此模式絕對不可能達標,直接給最小版本
+          log(`\n⚠ 文字、字體、向量圖本身就佔 ${fmtMB(est.C)},超過目標 ${fmtMB(targetBytes)}`);
+          log(`  「文字可複製」模式無論怎麼壓圖都下不去,已壓到極限 ${fmtMB(smallestBytes.length)}`);
+          log(`  → 想真正達到 ${fmtMB(targetBytes)} 請改「轉圖片」模式(缺點:文字不能再複製)`);
+          log(`✓ 仍輸出最小版本給你`);
+          return smallestBytes;
         }
         const curr = history[history.length - 1];
         const rTarget = (targetBytes * 0.93 - est.C) / est.J;
@@ -3026,7 +3037,10 @@
       // fallback:估不出來時用舊公式
       [scale, quality] = refineParams(scale, quality, bytes.length, targetBytes);
     }
-    throw new Error(`試 ${MAX_TRIES} 次壓不到目標,最後 ${fmtMB(lastBytes.length)}。請調大目標,或改「整頁轉圖片」模式(可壓更小)。`);
+    log(`\n⚠ 試 ${MAX_TRIES} 次仍達不到 ${fmtMB(targetBytes)},已壓到極限 ${fmtMB(smallestBytes.length)}`);
+    log(`  → 想更小請改「轉圖片」模式(缺點:文字不能再複製)`);
+    log(`✓ 仍輸出最小版本給你`);
+    return smallestBytes;
   }
 
   async function shrinkViewPreserve(file, maxPx, label, codec, quality = 0.85, qLabel = '標準') {
