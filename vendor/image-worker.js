@@ -359,6 +359,20 @@
       self.postMessage({ type: 'pong' });
       return;
     }
+    if (m.type === 'warmup') {
+      // v1.5.2:預熱 openjpegwasm,避免第一張 probe 卡 WASM 編譯
+      // 也順便初始化 MozJPEG / OxiPNG(JsCodecs 兩個 codec 各自 lazy)
+      try { await getJpxModule(); } catch (_) {}
+      try {
+        if (self.JsCodecs?.encodeMozJpeg) {
+          // 給一張 1×1 dummy ImageData 觸發 MozJPEG WASM init
+          const dummy = new ImageData(new Uint8ClampedArray([0,0,0,255]), 1, 1);
+          await self.JsCodecs.encodeMozJpeg(dummy, 0.8);
+        }
+      } catch (_) {}
+      self.postMessage({ type: 'warmedUp' });
+      return;
+    }
     if (m.type === 'probe') {
       try {
         const result = await runProbe(m.payload);

@@ -241,7 +241,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.5.1</span>
+        <span class="v3-badge">v1.5.2</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -401,6 +401,13 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.5.2</strong> · 2026-04-30</div>
+        <ul>
+          <li><strong>清理階段加速 30-40%</strong>:把 v1.4.x 主執行緒時代留下來「保護 UI」的過密 yield 拉回合理間隔(GC 從每 300 個物件 yield → 每 5000 個,worker 內主執行緒已釋放,過密 yield 純損耗)</li>
+          <li>無損再壓縮 / 遮色片瘦身的 yield 也同樣拉回(每 20 → 100)</li>
+          <li>JPEG 編碼引擎(WASM)在池子啟動時預熱,第一輪不再卡 1-2 秒 cold start</li>
+          <li>console 日誌增診斷:會清楚印出「並行池啟用(N workers)」+「分流:JPEG X 張(平行)、其他 Y 張(序列)」— 用戶可判斷自己壓的檔有沒有跑在快路徑</li>
+        </ul>
         <div class="cl-ver"><strong>v1.5.1</strong> · 2026-04-30</div>
         <ul>
           <li><strong>圖片並行壓 — 整體快 2-4x</strong>(視機器核心數):自動偵測你電腦核心數開 2-4 個 worker,每張 JPEG 圖在獨立執行緒上壓,M1 Mac / 中階 PC 都會明顯快</li>

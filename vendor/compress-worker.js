@@ -87,7 +87,24 @@ async function ensureImagePool() {
     }
     // 全部 ready 才算初始化完成(任一失敗→reject,fallback inline)
     await Promise.all(workers.map(x => x.ready));
+
+    // v1.5.2 D:JPX 預熱 — 對每個 worker 同步觸發 getJpxModule(WASM 編譯)
+    // 不預熱的話,第一輪 N 張圖每個 worker 都會卡 ~500ms WASM compile
+    await Promise.all(workers.map(slot => new Promise(resolve => {
+      const onMsg = e => {
+        if (e.data?.type === 'warmedUp') {
+          slot.worker.removeEventListener('message', onMsg);
+          resolve();
+        }
+      };
+      slot.worker.addEventListener('message', onMsg);
+      slot.worker.postMessage({ type: 'warmup' });
+      // warmup 失敗也別卡死池子,5 秒兜底
+      setTimeout(resolve, 5000);
+    })));
+
     _imagePool = workers;
+    self.__imagePool = workers; // 暴露給 devtools 診斷(切到 worker context 用)
     return workers;
   })();
   return _imagePoolPromise;
@@ -959,7 +976,8 @@ function dispatchProbe(slot, payload) {
 
     let count = 0, saved = 0, textMaskSharpened = 0;
     for (let i = 0; i < targets.length; i++) {
-      if (i % 20 === 0) {
+      // v1.5.2:worker 內 yield 從 20 拉回 100(主執行緒已釋放)
+      if (i % 100 === 0) {
         checkCancelled();
         if (onProgress) onProgress(i, targets.length);
         await new Promise(r => setTimeout(r, 0));
@@ -1059,7 +1077,8 @@ function dispatchProbe(slot, payload) {
       targets.push({ ref, obj, dict });
     });
     for (let i = 0; i < targets.length; i++) {
-      if (i % 20 === 0) {
+      // v1.5.2:worker 內 yield 從 20 拉回 100(主執行緒已釋放)
+      if (i % 100 === 0) {
         checkCancelled();
         if (onProgress) onProgress(i, targets.length);
         await new Promise(r => setTimeout(r, 0));
@@ -1304,17 +1323,16 @@ function dispatchProbe(slot, payload) {
     if (ti && ti.Info) queue.push(ti.Info);
 
     // 掃描期分配 GC 階段 0-50%,用 asymptotic fake progress
+    // v1.5.2:在 worker 內 yield 從 300 拉回 5000(主執行緒已釋放,只剩 cancel 響應 + 進度上報用)
     let yieldCounter = 0;
     while (queue.length > 0) {
       yieldCounter++;
-      if (yieldCounter % 300 === 0) {
+      if (yieldCounter % 5000 === 0) {
         checkCancelled();
-        // 假進度:處理愈多愈接近 50%,但永不到 50(留給 delete 階段)
         if (onProgress) {
           const fakeI = 50 * (1 - Math.exp(-yieldCounter / 2000));
           onProgress(fakeI, 100);
         }
-        // 用 setTimeout(0) 讓 compositor 收到新 transition target
         await new Promise(r => setTimeout(r, 0));
       }
       const item = queue.pop();
@@ -1351,8 +1369,9 @@ function dispatchProbe(slot, payload) {
       toDelete.push(ref);
     });
     // Delete 期 50-100%
+    // v1.5.2:在 worker 內 yield 從 200 拉回 2000
     for (let i = 0; i < toDelete.length; i++) {
-      if (i % 200 === 0) {
+      if (i % 2000 === 0) {
         checkCancelled();
         if (onProgress) onProgress(50 + (i / Math.max(1, toDelete.length)) * 50, 100);
         await new Promise(r => setTimeout(r, 0));
@@ -2125,12 +2144,14 @@ function dispatchProbe(slot, payload) {
 
     // ====== Phase 3:把 DCTDecode 圖派給 image-worker pool 平行處理 ======
     // Flate 圖留 inline(dict 解碼需 pdf-lib,沒搬進 image-worker)
+    // v1.5.2:pool 啟動結果一律 log(不靠 verboseLog),用戶能看到自己有沒有跑在快路徑
     let pool = null;
     try {
       pool = await ensureImagePool();
-      if (verboseLog) log(`  並行池啟用(${pool.length} workers)`);
+      log(`  並行池啟用(${pool.length} workers)`);
     } catch (e) {
-      if (verboseLog) log(`  並行池啟用失敗,單線程處理:${e.message}`);
+      log(`  並行池啟用失敗,單線程處理:${e.message}`);
+      if (e.stack) log(`    stack: ${e.stack.split('\n')[0]}`);
     }
 
     // ----- 取出每個 image 的 per-image scalar(無論 inline 或 pool 都用) -----
@@ -2202,6 +2223,10 @@ function dispatchProbe(slot, payload) {
     for (let i = 0; i < items.length; i++) {
       if (pool && items[i].filterType === 'DCTDecode') dctIdx.push(i);
       else inlineIdx.push(i);
+    }
+    // v1.5.2:讓用戶看到分流比例(理解為何沒明顯加速 — 可能是 Flate 太多)
+    if (pool) {
+      log(`  分流:JPEG ${dctIdx.length} 張(平行)、其他 ${inlineIdx.length} 張(序列)`);
     }
 
     // 先派 inline(序列、佔 orchestrator),再派 pool(平行、各 image-worker 上)
