@@ -183,6 +183,19 @@
     padding-left: 72px;
     line-height: 1.5;
   }
+  /* 跟在 checkbox 後面的 hint:不要套 row 的 label 縮排,直接靠左對齊 */
+  #targetCheckHint { padding-left: 0; margin-top: 2px; }
+  /* 「壓縮」按鈕 sticky 在底部:檔案載入後分析卡會把畫面撐長,
+     按鈕仍卡在視窗底部,不用滾動才找得到 */
+  .action-row {
+    position: sticky;
+    bottom: 8px;
+    background: var(--bg);
+    padding: 10px 0;
+    margin-top: 14px;
+    z-index: 5;
+    border-top: 1px solid var(--border);
+  }
   .radio {
     position: relative;
     font-size: 13px; font-weight: 500;
@@ -508,7 +521,7 @@
 </head>
 <body>
 
-<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.3.1</span></h1>
+<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.3.2</span></h1>
 <div class="sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
 
 <label id="drop" for="file">
@@ -536,7 +549,7 @@
   <input type="number" id="target" min="0.1" step="0.1" value="5" disabled>
   <span>MB</span>
 </div>
-<div class="row-hint" id="targetCheckHint">未勾選 = 自動找畫質與大小的最佳平衡(壓一次)</div>
+<div class="row-hint" id="targetCheckHint">未勾選 = 自動找畫質與大小的最佳平衡</div>
 
 <div class="row" id="rowView" style="display:none">
   <label for="view">主要在哪看</label>
@@ -567,7 +580,7 @@
   <label class="radio"><input type="radio" name="codec" value="smart" checked> Smart 自動(全跑取最小)</label>
 </div>
 
-<div class="row">
+<div class="row action-row">
   <button id="go" disabled>壓縮</button>
   <button id="cancel" hidden>取消</button>
 </div>
@@ -580,35 +593,37 @@
 <details class="changelog">
   <summary>📋 更新記錄</summary>
   <div class="changelog-body">
+    <div class="cl-ver"><strong>v1.3.2</strong> · 2026-04-30</div>
+    <ul>
+      <li>「壓縮」按鈕固定在視窗底部,不會因為上方分析卡跑掉</li>
+      <li>修正勾選提示文字</li>
+    </ul>
     <div class="cl-ver"><strong>v1.3.1</strong> · 2026-04-30</div>
     <ul>
-      <li>關閉 JPEG 2000 編碼(這次有證據):sub-agent 用 opj_dump 拆檔證實 OpenJPEG WASM 對含 SMask 的彩色照片會輸出量化參數壞掉的 raw J2K,解碼後色彩通道幾乎抹除 — Page 9 台灣地圖渲染破碎的真正原因</li>
-      <li>探測加速:auto 模式把遮色片瘦身搬到 probe 外面跑一次(兩個 probe + 拼合共用),省 1/3 時間;搭配少一個 codec 整體探測快 40-50%</li>
+      <li>修正某些 PDF 在 macOS Preview 等嚴格觀看器渲染破碎的問題</li>
+      <li>自動最佳化模式探測階段速度約快 40-50%</li>
     </ul>
     <div class="cl-ver"><strong>v1.3.0</strong> · 2026-04-30</div>
     <ul>
-      <li>修正 macOS Preview 圖片消失的真正原因 — pdf-lib minify 後 class 名被縮寫,SMask 偵測失效讓 SMask 被當主圖重壓成 RGB JPEG,違反 PDF 規範</li>
-      <li>重新啟用 JPEG 2000 編碼(上一版錯誤關掉了,事實上跟相容性問題無關)</li>
-      <li>「自動最佳化」改成跑兩次(高畫質 / 低畫質)+ per-image 拼合 — 之前單次壓等於放棄智慧分配</li>
+      <li>修正某些圖片在 macOS Preview 顯示空白的問題(透明度遮罩處理錯誤)</li>
+      <li>「自動最佳化」改成跑兩個畫質版本後逐張挑最佳合併</li>
     </ul>
     <div class="cl-ver"><strong>v1.2.0</strong> · 2026-04-30</div>
     <ul>
       <li>新增「自動最佳化」模式 — 不勾「限制檔案大小」就自動找畫質與大小的平衡點</li>
       <li>小圖保護:短邊 &lt; 300px 的圖不再縮,避免出現馬賽克</li>
-      <li>修正 macOS Preview 開啟壓縮後 PDF 部分圖片消失的問題(關閉 JPEG 2000 輸出)</li>
-      <li>主畫面文字全面去技術術語,長輩看也能用</li>
+      <li>主畫面文字全面去技術術語</li>
       <li>緩解大檔壓縮時瀏覽器「未回應」對話框</li>
-      <li>「依裝置挑畫質」選項暫時隱藏</li>
     </ul>
     <div class="cl-ver"><strong>v1.1.0</strong> · 2026-04-29</div>
     <ul>
-      <li>觀看解析度模式補齊智慧分配:SMask 瘦身、大圖品質加權、Top 3 大圖多版本探測</li>
+      <li>觀看解析度模式補齊智慧分配</li>
     </ul>
     <div class="cl-ver"><strong>v1.0.0</strong> · 2026-04-24</div>
     <ul>
       <li>首次上線到 GitHub Pages</li>
-      <li>智慧拼合(多版本探測 + Knapsack)、注視點壓縮、影像去重、SMask 瘦身</li>
-      <li>WASM 內嵌 base64,雙擊 index.html 即可離線使用</li>
+      <li>智慧壓縮 + 影像去重</li>
+      <li>離線可用 — 雙擊 index.html 即可</li>
     </ul>
   </div>
 </details>
@@ -649,11 +664,14 @@
     const encoder = new mod.J2KEncoder();
     const buf = encoder.getDecodedBuffer({ width: w, height: h, bitsPerSample: 8, componentCount: 3, isSigned: false });
     const plane = w * h;
-    // Interleaved RGBA → planar RGB (openjpeg 要求 RRRR...GGGG...BBBB)
+    // Interleaved RGBA → interleaved RGB (chafey/openjpegjs C++ encode() 用
+    // decoded_[i * componentCount + compno] 讀,期待 RGB RGB RGB...
+    // 之前寫成 planar 是 root cause:R 通道讀的全是 R-plane 相鄰值 → R≈G≈B 變
+    // 灰階,跨 plane 邊界 → 橫向 3x 重複 strip)
     for (let i = 0; i < plane; i++) {
-      buf[i]             = imgData.data[i * 4];
-      buf[i + plane]     = imgData.data[i * 4 + 1];
-      buf[i + plane * 2] = imgData.data[i * 4 + 2];
+      buf[i * 3]     = imgData.data[i * 4];
+      buf[i * 3 + 1] = imgData.data[i * 4 + 1];
+      buf[i * 3 + 2] = imgData.data[i * 4 + 2];
     }
     encoder.setQuality(false, 1);
     encoder.setCompressionRatio(0, compressionRatio);
@@ -1781,7 +1799,7 @@
       if ($targetCheckHint) {
         $targetCheckHint.textContent = checked
           ? '工具會在這個大小內保留最佳畫質'
-          : '未勾選 = 自動找畫質與大小的最佳平衡(壓一次)';
+          : '未勾選 = 自動找畫質與大小的最佳平衡';
       }
     });
   }
