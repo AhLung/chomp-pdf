@@ -192,8 +192,11 @@
     filter: drop-shadow(0 2px 3px rgba(0,0,0,.18));
     will-change: transform;
   }
-  .mascots .shark { bottom: 28px; left: 0; transform: translateX(calc(var(--shark-pos) * 1%)); }
-  .mascots .dino { bottom: 4px; left: 0; transform: translateX(calc(var(--dino-pos) * 1%)); }
+  /* JS 維護 --shark-tx / --dino-tx 是「像素位移」(updateMascotTx 算容器寬 × 92%);
+     v1.4.0 重做時誤改成 --shark-pos × 1%,但 translateX 百分比基準是元素自身寬,
+     emoji span ~22px → 95% × 22 = 21px,鯊魚只動一個 emoji 距離 = 看起來不會跑 */
+  .mascots .shark { bottom: 28px; left: 0; transform: translateX(var(--shark-tx, 6px)); }
+  .mascots .dino { bottom: 4px; left: 0; transform: translateX(var(--dino-tx, 6px)); }
   .mascots.creeping .shark, .mascots.creeping .dino { transition: transform var(--creep-duration) linear; }
   .mascots .m-inner {
     display: inline-block;
@@ -238,7 +241,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.4.8</span>
+        <span class="v3-badge">v1.4.9</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -398,6 +401,10 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.4.9</strong> · 2026-04-30</div>
+        <ul>
+          <li>修壓縮中鯊魚 🦈 跟恐龍 🦖 不會往右跑的 bug(v1.4.0 版面重做時 CSS 變數沒對到 JS,只動了一個 emoji 寬的距離)</li>
+        </ul>
         <div class="cl-ver"><strong>v1.4.8</strong> · 2026-04-30</div>
         <ul>
           <li><strong>頁面標題完全不糊了</strong> — 文字遮色片直接 skip 不縮放(之前嘗試「縮+二值化」對小字仍會糊)。檔案大小影響極小(全部遮色片佔不到 3%)</li>
@@ -408,7 +415,7 @@
         </ul>
         <div class="cl-ver"><strong>v1.4.6</strong> · 2026-04-30</div>
         <ul>
-          <li>(同 v1.4.5,但偵測抽樣有 bug 標題仍糊 — 已於 v1.4.8 修正)</li>
+          <li>(同 v1.4.5,但偵測抽樣有 bug 標題仍糊 — 已於 v1.4.9 修正)</li>
         </ul>
         <div class="cl-ver"><strong>v1.4.5</strong> · 2026-04-30</div>
         <ul>
