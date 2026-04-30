@@ -241,7 +241,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.5.3</span>
+        <span class="v3-badge">v1.5.4</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -401,6 +401,10 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.5.4</strong> · 2026-04-30</div>
+        <ul>
+          <li><strong>Canvas 讀取像素加速</strong>:所有 worker 內部的 2D context 加上 `willReadFrequently: true` hint,瀏覽器自動切軟體渲染(讀像素不再走 GPU 同步傳輸),plate / text 偵測 + 編碼前的 ImageData 讀取會快一點。順便消掉 console 上百條 Canvas2D 警告</li>
+        </ul>
         <div class="cl-ver"><strong>v1.5.3</strong> · 2026-04-30</div>
         <ul>
           <li><strong>修壓縮中鯊魚 🦈 跟恐龍 🦖 不見了</strong> — Web Worker 模式進度只走簡化 path,沒觸發 mascot 的 startRace / setProgress(主執行緒模式才有)。現在 worker 模式也會啟動賽跑、跟著進度移動、最後揭曉冠軍</li>

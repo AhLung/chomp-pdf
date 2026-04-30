@@ -149,7 +149,7 @@ function dispatchProbe(slot, payload) {
 
   // ===== canvasToImageData (index.html L687-690) =====
   function canvasToImageData(canvas) {
-    const c = canvas.getContext('2d');
+    const c = canvas.getContext('2d', { willReadFrequently: true });
     return c.getImageData(0, 0, canvas.width, canvas.height);
   }
 
@@ -522,7 +522,7 @@ function dispatchProbe(slot, payload) {
   async function encodeCanvasToJpx(canvas, compressionRatio) {
     const mod = await getJpxModule();
     const w = canvas.width, h = canvas.height;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const imgData = ctx.getImageData(0, 0, w, h);
     const encoder = new mod.J2KEncoder();
     const buf = encoder.getDecodedBuffer({ width: w, height: h, bitsPerSample: 8, componentCount: 3, isSigned: false });
@@ -620,7 +620,7 @@ function dispatchProbe(slot, payload) {
       width = decoded.width; height = decoded.height;
       const c = _newCanvas();
       c.width = width; c.height = height;
-      c.getContext('2d').putImageData(decoded.imgData, 0, 0);
+      c.getContext('2d', { willReadFrequently: true }).putImageData(decoded.imgData, 0, 0);
       srcCanvas = c;
     } else {
       return null;
@@ -637,7 +637,7 @@ function dispatchProbe(slot, payload) {
 
     const canvas = _newCanvas();
     canvas.width = newW; canvas.height = newH;
-    const canvasCtx = canvas.getContext('2d');
+    const canvasCtx = canvas.getContext('2d', { willReadFrequently: true });
     canvasCtx.fillStyle = 'white';
     canvasCtx.fillRect(0, 0, newW, newH);
     canvasCtx.drawImage(srcCanvas, 0, 0, newW, newH);
@@ -652,7 +652,7 @@ function dispatchProbe(slot, payload) {
   function isPlateImage(canvas) {
     const w = canvas.width, h = canvas.height;
     if (w * h === 0) return false;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const data = ctx.getImageData(0, 0, w, h).data;
     const step = Math.max(1, Math.floor(w * h / 500));
     let sR=0, sG=0, sB=0, s2R=0, s2G=0, s2B=0, n=0;
@@ -676,7 +676,7 @@ function dispatchProbe(slot, payload) {
     // 用面積 + 短邊判斷,讓寬扁 banner 也能進(例如 1500×150 的標題列)
     if (w * h < 60000) return false;
     if (w < 200 || h < 80) return false;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const data = ctx.getImageData(0, 0, w, h).data;
     const BS = 16;
     const blocksX = Math.floor(w / BS);
@@ -752,7 +752,7 @@ function dispatchProbe(slot, payload) {
       const newH = Math.max(1, Math.floor(h * pScale));
       const sc = _newCanvas();
       sc.width = newW; sc.height = newH;
-      sc.getContext('2d').drawImage(fullCanvas, 0, 0, newW, newH);
+      sc.getContext('2d', { willReadFrequently: true }).drawImage(fullCanvas, 0, 0, newW, newH);
       const encResult = await encodeCanvas(sc, pQuality, codec);
       fullCanvas.width = fullCanvas.height = 0;
       sc.width = sc.height = 0;
@@ -1038,10 +1038,10 @@ function dispatchProbe(slot, payload) {
       if (newW >= width || newH >= height) continue;
 
       const srcC = _newCanvas(); srcC.width = width; srcC.height = height;
-      srcC.getContext('2d').putImageData(imgData, 0, 0);
+      srcC.getContext('2d', { willReadFrequently: true }).putImageData(imgData, 0, 0);
       const dstC = _newCanvas(); dstC.width = newW; dstC.height = newH;
-      dstC.getContext('2d').drawImage(srcC, 0, 0, newW, newH);
-      const dData = dstC.getContext('2d').getImageData(0, 0, newW, newH).data;
+      dstC.getContext('2d', { willReadFrequently: true }).drawImage(srcC, 0, 0, newW, newH);
+      const dData = dstC.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, newW, newH).data;
       const gray = new Uint8Array(newW * newH);
       for (let p = 0; p < newW * newH; p++) gray[p] = dData[p * 4];
       srcC.width = srcC.height = 0; dstC.width = dstC.height = 0;
@@ -1638,7 +1638,7 @@ function dispatchProbe(slot, payload) {
     const canvas = _newCanvas();
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     await page.render({ canvasContext: ctx, viewport }).promise;
@@ -2203,7 +2203,7 @@ function dispatchProbe(slot, payload) {
         } else {
           scaled = _newCanvas();
           scaled.width = newW; scaled.height = newH;
-          scaled.getContext('2d').drawImage(fullCanvas, 0, 0, newW, newH);
+          scaled.getContext('2d', { willReadFrequently: true }).drawImage(fullCanvas, 0, 0, newW, newH);
         }
         const enc = await encodeCanvas(scaled, perQuality, codec);
         if (scaled !== fullCanvas) { scaled.width = scaled.height = 0; }

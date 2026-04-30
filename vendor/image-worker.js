@@ -41,7 +41,7 @@
   }
 
   function canvasToImageData(canvas) {
-    const c = canvas.getContext('2d');
+    const c = canvas.getContext('2d', { willReadFrequently: true });
     return c.getImageData(0, 0, canvas.width, canvas.height);
   }
 
@@ -144,7 +144,7 @@
   function isPlateImage(canvas) {
     const w = canvas.width, h = canvas.height;
     if (w * h === 0) return false;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const data = ctx.getImageData(0, 0, w, h).data;
     const step = Math.max(1, Math.floor(w * h / 500));
     let sR=0, sG=0, sB=0, s2R=0, s2G=0, s2B=0, n=0;
@@ -164,7 +164,7 @@
     const w = canvas.width, h = canvas.height;
     if (w * h < 60000) return false;
     if (w < 200 || h < 80) return false;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const data = ctx.getImageData(0, 0, w, h).data;
     const BS = 16;
     const blocksX = Math.floor(w / BS);
@@ -211,7 +211,7 @@
   async function encodeCanvasToJpx(canvas, compressionRatio) {
     const mod = await getJpxModule();
     const w = canvas.width, h = canvas.height;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const imgData = ctx.getImageData(0, 0, w, h);
     const encoder = new mod.J2KEncoder();
     const buf = encoder.getDecodedBuffer({ width: w, height: h, bitsPerSample: 8, componentCount: 3, isSigned: false });
@@ -297,7 +297,7 @@
 
     const fcW = img.width, fcH = img.height;
     const fullCanvas = _newCanvas(fcW, fcH);
-    const fullCtx = fullCanvas.getContext('2d');
+    const fullCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
     fullCtx.fillStyle = 'white';
     fullCtx.fillRect(0, 0, fcW, fcH);
     fullCtx.drawImage(img, 0, 0);
@@ -338,7 +338,7 @@
         scaled = fullCanvas;
       } else {
         scaled = _newCanvas(newW, newH);
-        scaled.getContext('2d').drawImage(fullCanvas, 0, 0, newW, newH);
+        scaled.getContext('2d', { willReadFrequently: true }).drawImage(fullCanvas, 0, 0, newW, newH);
       }
       const enc = await encodeCanvas(scaled, perQuality, codec);
       if (scaled !== fullCanvas) { scaled.width = scaled.height = 0; }
