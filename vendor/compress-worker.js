@@ -704,7 +704,116 @@ function _newCanvas() {
   }
 
 
-    // ===== refKey (index.html line 1121-1121) =====
+    // ===== collectImageStreams (index.html line 2574-2628) =====
+  async function collectImageStreams(pdfDoc) {
+    const { PDFName, PDFRawStream } = PDFLib;
+    // 先蒐集所有被當作 SMask/Mask 的 refs — 這些不能壓(會毀透明)
+    const maskTargetRefs = new Set();
+    pdfDoc.context.enumerateIndirectObjects().forEach(([_r, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const d = obj.dict;
+      const sm = d.get(PDFName.of('SMask'));
+      const m = d.get(PDFName.of('Mask'));
+      // 用 instanceof 而非 constructor.name — pdf-lib.min.js 把 class 名稱 mangle 成單字母,
+      // .constructor.name === 'PDFRef' 永遠 false → maskTargetRefs 永遠空 → SMask 被當主圖
+      // 重壓 → 寫成 DeviceRGB DCT JPEG → 違反 PDF spec § 11.6.5.3 → macOS Preview 拒渲染
+      for (const v of [sm, m]) {
+        if (v instanceof PDFLib.PDFRef) {
+          maskTargetRefs.add(refKey(v));
+        }
+      }
+    });
+
+    const items = [];
+    pdfDoc.context.enumerateIndirectObjects().forEach(([ref, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const dict = obj.dict;
+      const subtype = dict.get(PDFName.of('Subtype'));
+      const subStr = subtype && (subtype.encodedName || subtype.toString());
+      if (subStr !== '/Image') return;
+      const type = dict.get(PDFName.of('Type'));
+      const typeStr = type && (type.encodedName || type.toString());
+      if (typeStr && typeStr !== '/XObject') return;
+      const filter = dict.get(PDFName.of('Filter'));
+      const filterType = imageFilterType(filter);
+      if (!filterType) return;
+      // skip 被當 alpha 用的(是別人 SMask/Mask 的 target)
+      if (maskTargetRefs.has(refKey(ref))) return;
+      // skip ImageMask stencil mask
+      const imgMask = dict.get(PDFName.of('ImageMask'));
+      if (imgMask && (imgMask.value === true || imgMask.encodedName === '/true')) return;
+      // skip 有 Mask 是 Array(color key)— re-encode RGB 會讓 key 錯位
+      const mask = dict.get(PDFName.of('Mask'));
+      if (mask && mask.array) return;
+      // 有 SMask/Mask 的主圖:標記 hasMask,讓 recompressImage 走 plate 偵測分支
+      const smRef = dict.get(PDFName.of('SMask'));
+      const mkRef = dict.get(PDFName.of('Mask'));
+      const hasMask = (smRef instanceof PDFLib.PDFRef) || (mkRef instanceof PDFLib.PDFRef);
+      // SMask 帶 Matte 仍 skip(pre-multiplied alpha 不能重壓)
+      if (smRef instanceof PDFLib.PDFRef) {
+        try {
+          const smObj = pdfDoc.context.lookup(smRef);
+          if (smObj && smObj.dict && smObj.dict.get(PDFName.of('Matte'))) return;
+        } catch (_) {}
+      }
+      items.push({ ref, obj, dict, filterType, hasMask });
+    });
+    return items;
+  }
+
+  // ===== applyImageReplacement (index.html line 2630-2660) =====
+  function applyImageReplacement(pdfDoc, ref, dict, origW, origH, scale, result) {
+    const N = (n) => PDFLib.PDFName.of(n);
+    const actualScale = result.plateScale || scale;
+    // OxiPNG 路徑:用 PNG 解析出來的真實尺寸,FlateDecode + Predictor 15
+    if (result.filter === 'FlateDecode-PNG' && result.pngMeta) {
+      const m = result.pngMeta;
+      dict.set(N('Width'), PDFLib.PDFNumber.of(m.width));
+      dict.set(N('Height'), PDFLib.PDFNumber.of(m.height));
+      dict.set(N('Filter'), N('FlateDecode'));
+      dict.set(N('ColorSpace'), N(m.colorspace));
+      dict.set(N('BitsPerComponent'), PDFLib.PDFNumber.of(m.bitDepth));
+      // DecodeParms 含 Predictor 15(自動選 PNG 五種 predictor)
+      const dp = pdfDoc.context.obj({
+        Predictor: 15,
+        Columns: m.width,
+        Colors: m.colors,
+        BitsPerComponent: m.bitDepth,
+      });
+      dict.set(N('DecodeParms'), dp);
+      pdfDoc.context.assign(ref, PDFLib.PDFRawStream.of(dict, result.bytes));
+      return;
+    }
+    // JPEG / JP2 路徑(原本邏輯)
+    if (origW > 0) dict.set(N('Width'), PDFLib.PDFNumber.of(Math.max(1, Math.floor(origW * actualScale))));
+    if (origH > 0) dict.set(N('Height'), PDFLib.PDFNumber.of(Math.max(1, Math.floor(origH * actualScale))));
+    dict.set(N('Filter'), N(result.filter));
+    try { dict.delete(N('DecodeParms')); } catch (_) {}
+    dict.set(N('ColorSpace'), N('DeviceRGB'));
+    dict.set(N('BitsPerComponent'), PDFLib.PDFNumber.of(8));
+    pdfDoc.context.assign(ref, PDFLib.PDFRawStream.of(dict, result.bytes));
+  }
+
+  // ===== skipReasonOf (index.html line 2662-2678) =====
+  function skipReasonOf(dict, filterType, hasMask) {
+    const N = (n) => PDFLib.PDFName.of(n);
+    const cs = dict.get(N('ColorSpace'));
+    const bpc = dict.get(N('BitsPerComponent'))?.asNumber?.() || 8;
+    let csKey = 'Unknown';
+    if (cs) {
+      if (cs.encodedName) csKey = cs.encodedName.replace(/^\//, '');
+      else if (cs.array) csKey = 'Array(' + (cs.get(0)?.encodedName?.replace(/^\//, '') || '?') + ')';
+    }
+    // 有 SMask 且 decode 不是 plate 型 → 保守不壓(避免毀透明)
+    if (hasMask) return '帶 SMask 非 plate 型(保守不壓)';
+    if (bpc !== 8) return `${bpc}-bit`;
+    if (csKey === 'Array(Indexed)') return 'Indexed 調色盤';
+    if (csKey === 'Array(ICCBased)') return 'ICCBased 色彩描述';
+    if (csKey.startsWith('Array')) return csKey;
+    return filterType === 'FlateDecode' ? `Flate+${csKey}` : csKey;
+  }
+
+  // ===== refKey (index.html line 1121-1121) =====
   function refKey(ref) { return `${ref.objectNumber},${ref.generationNumber}`; }
 
   // ===== sha1Hex (index.html line 1124-1130) =====
