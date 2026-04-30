@@ -238,7 +238,7 @@
     <div class="v3-header">
       <div class="v3-logo">
         <span class="emoji">🦖</span>Chomp<span class="p">PDF</span><span class="emoji">🦈</span>
-        <span class="v3-badge">v1.4.7</span>
+        <span class="v3-badge">v1.4.8</span>
       </div>
       <div class="v3-sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
       <div class="v3-toggle-row">
@@ -398,13 +398,17 @@
     <details class="v3-card v3-changelog">
       <summary>📋 更新記錄</summary>
       <div class="changelog-body">
+        <div class="cl-ver"><strong>v1.4.8</strong> · 2026-04-30</div>
+        <ul>
+          <li><strong>頁面標題完全不糊了</strong> — 文字遮色片直接 skip 不縮放(之前嘗試「縮+二值化」對小字仍會糊)。檔案大小影響極小(全部遮色片佔不到 3%)</li>
+        </ul>
         <div class="cl-ver"><strong>v1.4.7</strong> · 2026-04-30</div>
         <ul>
-          <li><strong>真的修好頁面標題模糊</strong> — v1.4.6 的偵測抽樣太稀(只取 41 行),標題字密集區被空白行稀釋判定失敗。這版抽樣密度提高 5×、判定改成「雙峰強或邊緣多」二擇一,命中後輕度縮放 + 二值化 snap 字邊回 binary,銳利不糊還能省檔。</li>
+          <li>修文字遮色片偵測抽樣 bug(密度提高 5×、判定改 OR)— 命中率明顯提升</li>
         </ul>
         <div class="cl-ver"><strong>v1.4.6</strong> · 2026-04-30</div>
         <ul>
-          <li>(同 v1.4.5,但偵測抽樣有 bug 標題仍糊 — 已於 v1.4.7 修正)</li>
+          <li>(同 v1.4.5,但偵測抽樣有 bug 標題仍糊 — 已於 v1.4.8 修正)</li>
         </ul>
         <div class="cl-ver"><strong>v1.4.5</strong> · 2026-04-30</div>
         <ul>
@@ -1255,15 +1259,20 @@
           }
         }
         const edgePct = edges / Math.max(1, edgeChecks);
-        // 改 AND 為 (雙峰強 OR 邊緣多):雙峰 ≥ 0.3 + ≥ 0.3 = 60% 像素已是強訊號,
-        // 即使 edge 抽樣偏低仍應視為 text-mask;edge ≥ 0.01 也單獨可命中
+        // (雙峰強 OR 邊緣多):雙峰 60% 像素卡兩端是強訊號,edge ≥ 0.01 也單獨命中
         isTextMask = (darkPct >= 0.3 && lightPct >= 0.3) || edgePct >= 0.01;
       }
 
-      // 文字 mask 用更輕的 scale(0.85)避免抽掉太多空間細節再二值化還是糊
-      const effectiveScale = isTextMask ? Math.max(0.8, Math.min(1.0, scaleFactor + 0.2)) : scaleFactor;
-      const newW = Math.max(1, Math.floor(width * effectiveScale));
-      const newH = Math.max(1, Math.floor(height * effectiveScale));
+      // 文字 mask:**完全 skip 不縮**。試過「縮+二值化」小字仍會糊,而 SMask 全部
+      // 加總對檔案佔比不到 3%(50 張 ×6KB = 300KB,15MB 檔案的 2%),
+      // 不值得為了這 3% 把字壓糊。
+      if (isTextMask) {
+        textMaskSharpened++; // 變數名沿用,實際是 skip 的計數
+        continue;
+      }
+
+      const newW = Math.max(1, Math.floor(width * scaleFactor));
+      const newH = Math.max(1, Math.floor(height * scaleFactor));
       if (newW >= width || newH >= height) continue;
 
       const srcC = document.createElement('canvas'); srcC.width = width; srcC.height = height;
@@ -1272,13 +1281,7 @@
       dstC.getContext('2d').drawImage(srcC, 0, 0, newW, newH);
       const dData = dstC.getContext('2d').getImageData(0, 0, newW, newH).data;
       const gray = new Uint8Array(newW * newH);
-      if (isTextMask) {
-        // 二值化:閾值 127,把 anti-alias 的灰階邊緣 snap 回 binary,恢復字邊銳利
-        for (let p = 0; p < newW * newH; p++) gray[p] = dData[p * 4] > 127 ? 255 : 0;
-        textMaskSharpened++;
-      } else {
-        for (let p = 0; p < newW * newH; p++) gray[p] = dData[p * 4];
-      }
+      for (let p = 0; p < newW * newH; p++) gray[p] = dData[p * 4];
       srcC.width = srcC.height = 0; dstC.width = dstC.height = 0;
 
       const compressed = pako.deflate(gray, { level: 9 });
@@ -2646,7 +2649,7 @@
       setProgressPhase(32, 4);
       log2(`  遮色片瘦身(×${opts.smaskScale})...`);
       const smRes = await downscaleSMasks(pdfDoc, opts.smaskScale, (i, t) => setProgress((i / t) * 100));
-      if (smRes.textMaskSkipped > 0) log2(`  其中 ${smRes.textMaskSkipped} 個是文字遮色片(保留銳利不縮)`);
+      if (smRes.textMaskSharpened > 0) log2(`  其中 ${smRes.textMaskSharpened} 個是文字遮色片(保留銳利不縮)`);
     }
 
     setProgressPhase(opts.smaskScale ? 36 : 32, 5);
