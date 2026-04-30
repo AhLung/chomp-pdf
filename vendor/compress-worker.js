@@ -48,33 +48,21 @@ function depStatus() {
   };
 }
 
+  // ===== yieldToMain (index.html L2018-2020) =====
+  function yieldToMain(ms = 60) {
+    return new Promise(r => setTimeout(r, ms));
+  }
 
-// ============================================================================
-// Phase 2.1 — Image processing utilities ported from main thread.
-// 完全從 index.html main IIFE 抽出,適配 OffscreenCanvas:
-//   document.createElement('canvas') → _newCanvas() (內部 new OffscreenCanvas)
-//   canvas.toBlob → canvas.convertToBlob({ type, quality })
-//   window.JsCodecs → globalThis.JsCodecs
-// 其他 API(getContext('2d'), getImageData, drawImage, createImageBitmap,
-// pako, PDFLib, OpenJPEGWASM)在 Worker 全相容,無需改動。
-// ============================================================================
+  // ===== fmtMB (index.html L2045-2045) =====
+  const fmtMB = (bytes) => (bytes / 1024 / 1024).toFixed(2) + ' MB';
 
-function _newCanvas() {
-  // 初始 1×1,呼叫端會 set .width / .height(OffscreenCanvas 跟 canvas 行為一致)
-  return new OffscreenCanvas(1, 1);
-}
-
-// pdf-lib 的 save() 跟 sync ops 在 worker 也是 CPU bound,留 yieldToMain 維持
-// 跟主 thread 相同 cancel-safe 介面
-
-  // ===== image utils (index.html line 685-1099) =====
+  // ===== canvasToImageData (index.html L687-690) =====
   function canvasToImageData(canvas) {
     const c = canvas.getContext('2d');
     return c.getImageData(0, 0, canvas.width, canvas.height);
   }
 
-  // CRC32(PNG IEEE polynomial)— 編 PNG chunk 用
-  let _crcTable = null;
+  // ===== crc32 (index.html L694-706) =====
   function crc32(bytes) {
     if (!_crcTable) {
       _crcTable = new Uint32Array(256);
@@ -89,6 +77,7 @@ function _newCanvas() {
     return (c ^ 0xFFFFFFFF) >>> 0;
   }
 
+  // ===== makePngChunk (index.html L708-717) =====
   function makePngChunk(type, data) {
     const len = data.length;
     const chunk = new Uint8Array(12 + len);
@@ -100,8 +89,7 @@ function _newCanvas() {
     return chunk;
   }
 
-  // 把 ImageData(RGBA)編成 RGB PNG(丟掉 alpha)— 給 OxiPNG 喂食
-  // 用 pako level 1 快速,後面 OxiPNG 會重新最佳化
+  // ===== encodeRgbPng (index.html L721-758) =====
   function encodeRgbPng(imgData) {
     if (typeof pako === 'undefined') return null;
     const { data, width, height } = imgData;
@@ -141,8 +129,7 @@ function _newCanvas() {
     return out;
   }
 
-  // 解析 PNG 拿 IHDR + 串接所有 IDAT(IDAT 內含 deflate-compressed scanlines + PNG predictor 標頭)
-  // 直接餵 PDF FlateDecode + Predictor 15 完美匹配
+  // ===== extractPngIDAT (index.html L762-796) =====
   function extractPngIDAT(pngBytes) {
     if (!pngBytes || pngBytes.length < 16) return null;
     // PNG signature check
@@ -179,66 +166,7 @@ function _newCanvas() {
     return { idat, width, height, bitDepth, colors, colorspace };
   }
 
-  // 編碼策略:序列跑 JP2 + MozJPEG +(小圖 OxiPNG),取最小
-  // JPX root cause 已修(encodeCanvasToJpx 內部 buffer 從 planar 改 interleaved,
-  // 對應 chafey/openjpegjs 的 i*compCount+compno 讀法)— 之前色彩塌陷+橫向 3x
-  // 重複的破碎結果就是這條漏餵的鍋。修完賽馬重新有 3 個 codec。
-  async function encodeCanvas(canvas, quality, codec) {
-    const W = canvas.width, H = canvas.height;
-    const isSmall = (W * H <= 240 * 240);
-    let imgData = null;
-    const getImgData = () => imgData || (imgData = canvasToImageData(canvas));
-    const results = [];
-
-    // JP2(JPEG 2000)— 大圖才跑,小圖 MozJPEG 通常更小;低品質 JPX 對含 SMask
-    // 圖反而容易出問題(quantization 過度),設品質下限 0.55 才開
-    if (!isSmall && quality >= 0.55) {
-      try {
-        const ratio = Math.max(5, Math.min(80, 12 / Math.max(0.1, quality)));
-        const bytes = await encodeCanvasToJpx(canvas, ratio);
-        // size sanity:JPX 編碼有時崩潰會輸出空 / 過小 codestream
-        if (bytes && bytes.length > 200) {
-          results.push({ bytes, filter: 'JPXDecode', label: 'jp2' });
-        }
-      } catch (_) {}
-    }
-
-    // MozJPEG(WASM fallback to canvas JPEG)
-    if (globalThis.JsCodecs && globalThis.JsCodecs.encodeMozJpeg) {
-      try {
-        const bytes = await globalThis.JsCodecs.encodeMozJpeg(getImgData(), quality);
-        results.push({ bytes, filter: 'DCTDecode', label: 'mozjpeg' });
-      } catch (e) { console.warn('MozJPEG fail:', e); }
-    } else {
-      try {
-        const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
-        results.push({ bytes: new Uint8Array(await blob.arrayBuffer()), filter: 'DCTDecode', label: 'canvas-jpg' });
-      } catch (_) {}
-    }
-
-    // OxiPNG 小圖賽馬
-    if (isSmall && globalThis.JsCodecs && globalThis.JsCodecs.optimisePng) {
-      try {
-        const pngRaw = encodeRgbPng(getImgData());
-        if (pngRaw) {
-          // 高 quality 用 level 3(快),低 quality 用 level 6(多省 15-20%,小圖才跑速度可接受)
-          const oxiLevel = quality >= 0.8 ? 3 : 6;
-          const optimized = await globalThis.JsCodecs.optimisePng(pngRaw, oxiLevel);
-          const parsed = extractPngIDAT(optimized);
-          if (parsed) results.push({ bytes: parsed.idat, filter: 'FlateDecode-PNG', pngMeta: parsed, label: 'oxipng' });
-        }
-      } catch (_) {}
-    }
-
-    if (results.length === 0) {
-      const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
-      return { bytes: new Uint8Array(await blob.arrayBuffer()), filter: 'DCTDecode', label: 'canvas-jpg' };
-    }
-    results.sort((a, b) => a.bytes.length - b.bytes.length);
-    return results[0];
-  }
-
-  // FlateDecode 影像解碼:Flate inflate → PNG/TIFF predictor → ImageData
+  // ===== paeth (index.html L858-864) =====
   function paeth(a, b, c) {
     const p = a + b - c;
     const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
@@ -247,6 +175,7 @@ function _newCanvas() {
     return c;
   }
 
+  // ===== applyPngPredictor (index.html L866-896) =====
   function applyPngPredictor(raw, columns, colors, bits) {
     if (bits !== 8) return null;
     const bpp = colors;
@@ -279,23 +208,7 @@ function _newCanvas() {
     return out;
   }
 
-  // TIFF predictor 2:sample-by-sample 差分(同一 row 內)
-  function applyTiffPredictor(raw, columns, colors, bits) {
-    if (bits !== 8) return null;
-    const rowBytes = columns * colors;
-    const numRows = Math.floor(raw.length / rowBytes);
-    const out = new Uint8Array(numRows * rowBytes);
-    for (let y = 0; y < numRows; y++) {
-      const off = y * rowBytes;
-      for (let x = 0; x < rowBytes; x++) {
-        const prev = x >= colors ? out[off + x - colors] : 0;
-        out[off + x] = (raw[off + x] + prev) & 0xFF;
-      }
-    }
-    return out;
-  }
-
-  // 把「每 pixel bits 位元」的封裝資料拆成「每 sample 1 byte」
+  // ===== unpackBits (index.html L915-937) =====
   function unpackBits(raw, columns, rows, colors, bits) {
     if (bits === 8) return raw;
     const out = new Uint8Array(columns * rows * colors);
@@ -320,7 +233,7 @@ function _newCanvas() {
     return out;
   }
 
-  // 取 16-bit(big-endian)降為 8-bit
+  // ===== downTo8bit (index.html L940-946) =====
   function downTo8bit(raw, totalSamples) {
     const out = new Uint8Array(totalSamples);
     for (let i = 0; i < totalSamples; i++) {
@@ -329,7 +242,7 @@ function _newCanvas() {
     return out;
   }
 
-  // 取 ColorSpace 資訊:返 {kind, colors, palette?}
+  // ===== parseColorSpace (index.html L949-1004) =====
   function parseColorSpace(csObj, ctx) {
     if (!csObj) return { kind: 'DeviceRGB', colors: 3 };
     const name = csObj.encodedName;
@@ -387,6 +300,7 @@ function _newCanvas() {
     return null;
   }
 
+  // ===== decodeFlateImage (index.html L1006-1104) =====
   function decodeFlateImage(bytes, dict, ctx) {
     if (typeof pako === 'undefined') return null;
     const N = (n) => PDFLib.PDFName.of(n);
@@ -484,24 +398,106 @@ function _newCanvas() {
       }
     } else return null;
 
-
-  // ===== yieldToMain (index.html line 2014-2018) =====
-  // pdf-lib 的 save() 是 CPU-bound,中間沒辦法 yield;但 save() 前後 yield 能讓
-  // 事件迴圈處理使用者輸入、避免瀏覽器把整個 tab 標記為 hung
-  function yieldToMain(ms = 60) {
-    return new Promise(r => setTimeout(r, ms));
+    return { width, height, imgData: new ImageData(rgba, width, height) };
   }
 
-
-  // ===== fmtMB (index.html line 2042-2043) =====
+  // ===== getJpxModule (index.html L650-657) =====
+  async function getJpxModule() {
+    if (_jpxModule) return _jpxModule;
+    if (typeof OpenJPEGWASM !== 'function') throw new Error('openjpegwasm.js 未載入');
+    _jpxModule = await OpenJPEGWASM({
+      locateFile: (f) => f.endsWith('.wasm') ? 'vendor/openjpegwasm.wasm' : f
+    });
+    return _jpxModule;
   }
-  const fmtMB = (bytes) => (bytes / 1024 / 1024).toFixed(2) + ' MB';
 
+  // ===== encodeCanvasToJpx (index.html L659-683) =====
+  async function encodeCanvasToJpx(canvas, compressionRatio) {
+    const mod = await getJpxModule();
+    const w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const encoder = new mod.J2KEncoder();
+    const buf = encoder.getDecodedBuffer({ width: w, height: h, bitsPerSample: 8, componentCount: 3, isSigned: false });
+    const plane = w * h;
+    // Interleaved RGBA → interleaved RGB (chafey/openjpegjs C++ encode() 用
+    // decoded_[i * componentCount + compno] 讀,期待 RGB RGB RGB...
+    // 之前寫成 planar 是 root cause:R 通道讀的全是 R-plane 相鄰值 → R≈G≈B 變
+    // 灰階,跨 plane 邊界 → 橫向 3x 重複 strip)
+    for (let i = 0; i < plane; i++) {
+      buf[i * 3]     = imgData.data[i * 4];
+      buf[i * 3 + 1] = imgData.data[i * 4 + 1];
+      buf[i * 3 + 2] = imgData.data[i * 4 + 2];
+    }
+    encoder.setQuality(false, 1);
+    encoder.setCompressionRatio(0, compressionRatio);
+    encoder.encode();
+    const view = encoder.getEncodedBuffer();
+    const out = new Uint8Array(view);
+    encoder.delete();
+    return out;
+  }
 
-  // ===== image proc + filter helpers (index.html line 2368-2571) =====
+  // ===== encodeCanvas (index.html L802-855) =====
+  async function encodeCanvas(canvas, quality, codec) {
+    const W = canvas.width, H = canvas.height;
+    const isSmall = (W * H <= 240 * 240);
+    let imgData = null;
+    const getImgData = () => imgData || (imgData = canvasToImageData(canvas));
+    const results = [];
+
+    // JP2(JPEG 2000)— 大圖才跑,小圖 MozJPEG 通常更小;低品質 JPX 對含 SMask
+    // 圖反而容易出問題(quantization 過度),設品質下限 0.55 才開
+    if (!isSmall && quality >= 0.55) {
+      try {
+        const ratio = Math.max(5, Math.min(80, 12 / Math.max(0.1, quality)));
+        const bytes = await encodeCanvasToJpx(canvas, ratio);
+        // size sanity:JPX 編碼有時崩潰會輸出空 / 過小 codestream
+        if (bytes && bytes.length > 200) {
+          results.push({ bytes, filter: 'JPXDecode', label: 'jp2' });
+        }
+      } catch (_) {}
+    }
+
+    // MozJPEG(WASM fallback to canvas JPEG)
+    if (globalThis.JsCodecs && globalThis.JsCodecs.encodeMozJpeg) {
+      try {
+        const bytes = await globalThis.JsCodecs.encodeMozJpeg(getImgData(), quality);
+        results.push({ bytes, filter: 'DCTDecode', label: 'mozjpeg' });
+      } catch (e) { console.warn('MozJPEG fail:', e); }
+    } else {
+      try {
+        const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
+        results.push({ bytes: new Uint8Array(await blob.arrayBuffer()), filter: 'DCTDecode', label: 'canvas-jpg' });
+      } catch (_) {}
+    }
+
+    // OxiPNG 小圖賽馬
+    if (isSmall && globalThis.JsCodecs && globalThis.JsCodecs.optimisePng) {
+      try {
+        const pngRaw = encodeRgbPng(getImgData());
+        if (pngRaw) {
+          // 高 quality 用 level 3(快),低 quality 用 level 6(多省 15-20%,小圖才跑速度可接受)
+          const oxiLevel = quality >= 0.8 ? 3 : 6;
+          const optimized = await globalThis.JsCodecs.optimisePng(pngRaw, oxiLevel);
+          const parsed = extractPngIDAT(optimized);
+          if (parsed) results.push({ bytes: parsed.idat, filter: 'FlateDecode-PNG', pngMeta: parsed, label: 'oxipng' });
+        }
+      } catch (_) {}
+    }
+
+    if (results.length === 0) {
+      const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
+      return { bytes: new Uint8Array(await blob.arrayBuffer()), filter: 'DCTDecode', label: 'canvas-jpg' };
+    }
+    results.sort((a, b) => a.bytes.length - b.bytes.length);
+    return results[0];
+  }
+
+  // ===== MAX_CANVAS_DIM (index.html L2370-2370) =====
   const MAX_CANVAS_DIM = 8192; // 保守 cap,避免瀏覽器 OOM
 
-  // 把原始 bytes + dict 解出 canvas(支援 JPEG / Flate / 降級)
+  // ===== imageToCanvas (index.html L2373-2414) =====
   async function imageToCanvas(origBytes, dict, filterType, targetScale, pdfCtx) {
     let width = 0, height = 0, srcCanvas = null;
 
@@ -545,7 +541,7 @@ function _newCanvas() {
     return canvas;
   }
 
-  // Plate 偵測:抽樣算 RGB variance,低表示「均勻色塊」靠 SMask 切形狀
+  // ===== isPlateImage (index.html L2417-2436) =====
   function isPlateImage(canvas) {
     const w = canvas.width, h = canvas.height;
     if (w * h === 0) return false;
@@ -567,12 +563,7 @@ function _newCanvas() {
     return Math.max(vR, vG, vB) < sizeFactor;
   }
 
-  // 文字圖偵測:整頁信息圖 / 表格 / 文字海報這類「主要內容是文字的圖」
-  // 演算法:切 16×16 block,計每塊灰階 max-min。
-  //   flat block(< 8):大面積純色背景 — text-image 比例高
-  //   sharp block(> 200):銳利字邊 / 分隔線 — text-image 比例顯著
-  // 門檻 flat ≥ 35% AND sharp ≥ 5% 對 9 張樣本 100% 準確
-  // 命中時 recompressImage 強制 scale=1.0 + quality ≥ 0.9 確保文字清楚
+  // ===== isTextImage (index.html L2444-2482) =====
   function isTextImage(canvas) {
     const w = canvas.width, h = canvas.height;
     // 用面積 + 短邊判斷,讓寬扁 banner 也能進(例如 1500×150 的標題列)
@@ -613,8 +604,26 @@ function _newCanvas() {
     return flatPct >= 0.35 && sharpPct >= 0.05;
   }
 
-  // codec: 'jpeg' | 'jpx' | 'smart'(實際永遠走 encodeCanvas 賽馬)
-  // returns { bytes, filter, label, plateScale? } | null
+  // ===== getFilterNames (index.html L2557-2563) =====
+  function getFilterNames(filter) {
+    if (!filter) return [];
+    const names = [];
+    if (filter.array) filter.array.forEach(n => names.push(n.encodedName || n.toString()));
+    else names.push(filter.encodedName || filter.toString());
+    return names.map(n => n && n.replace(/^\//, ''));
+  }
+
+  // ===== imageFilterType (index.html L2565-2572) =====
+  function imageFilterType(filter) {
+    const names = getFilterNames(filter);
+    if (!names.length) return null;
+    const last = names[names.length - 1];
+    if (last === 'DCTDecode' || last === 'DCT') return 'DCTDecode';
+    if (last === 'FlateDecode' || last === 'Fl') return 'FlateDecode';
+    return null;
+  }
+
+  // ===== recompressImage (index.html L2486-2555) =====
   async function recompressImage(origBytes, scale, quality, codec, filterType = 'DCTDecode', dict = null, pdfCtx = null, hasMask = false) {
     if (hasMask) {
       // 有 SMask/Mask 的主圖:先 decode 全尺寸偵測 plate / text-image
@@ -686,137 +695,10 @@ function _newCanvas() {
     return result;
   }
 
-  function getFilterNames(filter) {
-    if (!filter) return [];
-    const names = [];
-    if (filter.array) filter.array.forEach(n => names.push(n.encodedName || n.toString()));
-    else names.push(filter.encodedName || filter.toString());
-    return names.map(n => n && n.replace(/^\//, ''));
-  }
-
-  function imageFilterType(filter) {
-    const names = getFilterNames(filter);
-    if (!names.length) return null;
-    const last = names[names.length - 1];
-    if (last === 'DCTDecode' || last === 'DCT') return 'DCTDecode';
-    if (last === 'FlateDecode' || last === 'Fl') return 'FlateDecode';
-    return null;
-  }
-
-
-    // ===== collectImageStreams (index.html line 2574-2628) =====
-  async function collectImageStreams(pdfDoc) {
-    const { PDFName, PDFRawStream } = PDFLib;
-    // 先蒐集所有被當作 SMask/Mask 的 refs — 這些不能壓(會毀透明)
-    const maskTargetRefs = new Set();
-    pdfDoc.context.enumerateIndirectObjects().forEach(([_r, obj]) => {
-      if (!(obj instanceof PDFRawStream)) return;
-      const d = obj.dict;
-      const sm = d.get(PDFName.of('SMask'));
-      const m = d.get(PDFName.of('Mask'));
-      // 用 instanceof 而非 constructor.name — pdf-lib.min.js 把 class 名稱 mangle 成單字母,
-      // .constructor.name === 'PDFRef' 永遠 false → maskTargetRefs 永遠空 → SMask 被當主圖
-      // 重壓 → 寫成 DeviceRGB DCT JPEG → 違反 PDF spec § 11.6.5.3 → macOS Preview 拒渲染
-      for (const v of [sm, m]) {
-        if (v instanceof PDFLib.PDFRef) {
-          maskTargetRefs.add(refKey(v));
-        }
-      }
-    });
-
-    const items = [];
-    pdfDoc.context.enumerateIndirectObjects().forEach(([ref, obj]) => {
-      if (!(obj instanceof PDFRawStream)) return;
-      const dict = obj.dict;
-      const subtype = dict.get(PDFName.of('Subtype'));
-      const subStr = subtype && (subtype.encodedName || subtype.toString());
-      if (subStr !== '/Image') return;
-      const type = dict.get(PDFName.of('Type'));
-      const typeStr = type && (type.encodedName || type.toString());
-      if (typeStr && typeStr !== '/XObject') return;
-      const filter = dict.get(PDFName.of('Filter'));
-      const filterType = imageFilterType(filter);
-      if (!filterType) return;
-      // skip 被當 alpha 用的(是別人 SMask/Mask 的 target)
-      if (maskTargetRefs.has(refKey(ref))) return;
-      // skip ImageMask stencil mask
-      const imgMask = dict.get(PDFName.of('ImageMask'));
-      if (imgMask && (imgMask.value === true || imgMask.encodedName === '/true')) return;
-      // skip 有 Mask 是 Array(color key)— re-encode RGB 會讓 key 錯位
-      const mask = dict.get(PDFName.of('Mask'));
-      if (mask && mask.array) return;
-      // 有 SMask/Mask 的主圖:標記 hasMask,讓 recompressImage 走 plate 偵測分支
-      const smRef = dict.get(PDFName.of('SMask'));
-      const mkRef = dict.get(PDFName.of('Mask'));
-      const hasMask = (smRef instanceof PDFLib.PDFRef) || (mkRef instanceof PDFLib.PDFRef);
-      // SMask 帶 Matte 仍 skip(pre-multiplied alpha 不能重壓)
-      if (smRef instanceof PDFLib.PDFRef) {
-        try {
-          const smObj = pdfDoc.context.lookup(smRef);
-          if (smObj && smObj.dict && smObj.dict.get(PDFName.of('Matte'))) return;
-        } catch (_) {}
-      }
-      items.push({ ref, obj, dict, filterType, hasMask });
-    });
-    return items;
-  }
-
-  // ===== applyImageReplacement (index.html line 2630-2660) =====
-  function applyImageReplacement(pdfDoc, ref, dict, origW, origH, scale, result) {
-    const N = (n) => PDFLib.PDFName.of(n);
-    const actualScale = result.plateScale || scale;
-    // OxiPNG 路徑:用 PNG 解析出來的真實尺寸,FlateDecode + Predictor 15
-    if (result.filter === 'FlateDecode-PNG' && result.pngMeta) {
-      const m = result.pngMeta;
-      dict.set(N('Width'), PDFLib.PDFNumber.of(m.width));
-      dict.set(N('Height'), PDFLib.PDFNumber.of(m.height));
-      dict.set(N('Filter'), N('FlateDecode'));
-      dict.set(N('ColorSpace'), N(m.colorspace));
-      dict.set(N('BitsPerComponent'), PDFLib.PDFNumber.of(m.bitDepth));
-      // DecodeParms 含 Predictor 15(自動選 PNG 五種 predictor)
-      const dp = pdfDoc.context.obj({
-        Predictor: 15,
-        Columns: m.width,
-        Colors: m.colors,
-        BitsPerComponent: m.bitDepth,
-      });
-      dict.set(N('DecodeParms'), dp);
-      pdfDoc.context.assign(ref, PDFLib.PDFRawStream.of(dict, result.bytes));
-      return;
-    }
-    // JPEG / JP2 路徑(原本邏輯)
-    if (origW > 0) dict.set(N('Width'), PDFLib.PDFNumber.of(Math.max(1, Math.floor(origW * actualScale))));
-    if (origH > 0) dict.set(N('Height'), PDFLib.PDFNumber.of(Math.max(1, Math.floor(origH * actualScale))));
-    dict.set(N('Filter'), N(result.filter));
-    try { dict.delete(N('DecodeParms')); } catch (_) {}
-    dict.set(N('ColorSpace'), N('DeviceRGB'));
-    dict.set(N('BitsPerComponent'), PDFLib.PDFNumber.of(8));
-    pdfDoc.context.assign(ref, PDFLib.PDFRawStream.of(dict, result.bytes));
-  }
-
-  // ===== skipReasonOf (index.html line 2662-2678) =====
-  function skipReasonOf(dict, filterType, hasMask) {
-    const N = (n) => PDFLib.PDFName.of(n);
-    const cs = dict.get(N('ColorSpace'));
-    const bpc = dict.get(N('BitsPerComponent'))?.asNumber?.() || 8;
-    let csKey = 'Unknown';
-    if (cs) {
-      if (cs.encodedName) csKey = cs.encodedName.replace(/^\//, '');
-      else if (cs.array) csKey = 'Array(' + (cs.get(0)?.encodedName?.replace(/^\//, '') || '?') + ')';
-    }
-    // 有 SMask 且 decode 不是 plate 型 → 保守不壓(避免毀透明)
-    if (hasMask) return '帶 SMask 非 plate 型(保守不壓)';
-    if (bpc !== 8) return `${bpc}-bit`;
-    if (csKey === 'Array(Indexed)') return 'Indexed 調色盤';
-    if (csKey === 'Array(ICCBased)') return 'ICCBased 色彩描述';
-    if (csKey.startsWith('Array')) return csKey;
-    return filterType === 'FlateDecode' ? `Flate+${csKey}` : csKey;
-  }
-
-  // ===== refKey (index.html line 1121-1121) =====
+  // ===== refKey (index.html L1123-1123) =====
   function refKey(ref) { return `${ref.objectNumber},${ref.generationNumber}`; }
 
-  // ===== sha1Hex (index.html line 1124-1130) =====
+  // ===== sha1Hex (index.html L1126-1132) =====
   async function sha1Hex(bytes) {
     const digest = await crypto.subtle.digest('SHA-1', bytes);
     const arr = new Uint8Array(digest);
@@ -825,7 +707,7 @@ function _newCanvas() {
     return hex;
   }
 
-  // ===== sha1HexBatch (index.html line 1133-1149) =====
+  // ===== sha1HexBatch (index.html L1135-1151) =====
   async function sha1HexBatch(items, getBytes, onProgress) {
     const BATCH = 32;
     const results = new Array(items.length);
@@ -844,7 +726,7 @@ function _newCanvas() {
     return results;
   }
 
-  // ===== dedupImages (index.html line 1151-1258) =====
+  // ===== dedupImages (index.html L1153-1260) =====
   async function dedupImages(pdfDoc, onProgress) {
     const ctx = pdfDoc.context;
     const { PDFName, PDFRawStream } = PDFLib;
@@ -954,7 +836,7 @@ function _newCanvas() {
     return { count: remap.size, saved };
   }
 
-  // ===== downscaleSMasks (index.html line 1261-1376) =====
+  // ===== downscaleSMasks (index.html L1263-1378) =====
   async function downscaleSMasks(pdfDoc, scaleFactor, onProgress) {
     if (typeof pako === 'undefined') return { count: 0, saved: 0 };
     const ctx = pdfDoc.context;
@@ -1072,7 +954,7 @@ function _newCanvas() {
     return { count, saved, textMaskSharpened };
   }
 
-  // ===== recompressFlateLossless (index.html line 1379-1414) =====
+  // ===== recompressFlateLossless (index.html L1381-1416) =====
   async function recompressFlateLossless(pdfDoc, skipRefs, onProgress) {
     if (typeof pako === 'undefined') return { count: 0, saved: 0 };
     const ctx = pdfDoc.context;
@@ -1110,7 +992,7 @@ function _newCanvas() {
     return { count, saved };
   }
 
-  // ===== dedupFormXObjects (index.html line 1417-1505) =====
+  // ===== dedupFormXObjects (index.html L1419-1507) =====
   async function dedupFormXObjects(pdfDoc) {
     const ctx = pdfDoc.context;
     const { PDFRawStream, PDFName, PDFRef } = PDFLib;
@@ -1201,7 +1083,7 @@ function _newCanvas() {
     return { count, saved };
   }
 
-  // ===== dedupICCProfiles (index.html line 1508-1606) =====
+  // ===== dedupICCProfiles (index.html L1510-1608) =====
   async function dedupICCProfiles(pdfDoc) {
     const ctx = pdfDoc.context;
     const { PDFRawStream, PDFName, PDFRef } = PDFLib;
@@ -1302,7 +1184,7 @@ function _newCanvas() {
     return { count, saved };
   }
 
-  // ===== garbageCollect (index.html line 1630-1696) =====
+  // ===== garbageCollect (index.html L1632-1698) =====
   async function garbageCollect(pdfDoc, onProgress) {
     const ctx = pdfDoc.context;
     const reachable = new Set();
@@ -1371,7 +1253,7 @@ function _newCanvas() {
     return { count, saved };
   }
 
-  // ===== stripMetadata (index.html line 1699-1751) =====
+  // ===== stripMetadata (index.html L1701-1753) =====
   function stripMetadata(pdfDoc) {
     const ctx = pdfDoc.context;
     const N = (n) => PDFLib.PDFName.of(n);
@@ -1426,7 +1308,7 @@ function _newCanvas() {
     } catch (_) {}
   }
 
-  // ===== stripImageMetadata (index.html line 1754-1772) =====
+  // ===== stripImageMetadata (index.html L1756-1774) =====
   function stripImageMetadata(pdfDoc) {
     const N = (n) => PDFLib.PDFName.of(n);
     const SAFE_DELETE = ['Metadata', 'PieceInfo', 'LastModified', 'StructParent', 'StructParents'];
@@ -1447,7 +1329,116 @@ function _newCanvas() {
     return { count };
   }
 
-  // ===== embedJpxImage (index.html line 1105-1118) =====
+  // ===== collectImageStreams (index.html L2574-2628) =====
+  async function collectImageStreams(pdfDoc) {
+    const { PDFName, PDFRawStream } = PDFLib;
+    // 先蒐集所有被當作 SMask/Mask 的 refs — 這些不能壓(會毀透明)
+    const maskTargetRefs = new Set();
+    pdfDoc.context.enumerateIndirectObjects().forEach(([_r, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const d = obj.dict;
+      const sm = d.get(PDFName.of('SMask'));
+      const m = d.get(PDFName.of('Mask'));
+      // 用 instanceof 而非 constructor.name — pdf-lib.min.js 把 class 名稱 mangle 成單字母,
+      // .constructor.name === 'PDFRef' 永遠 false → maskTargetRefs 永遠空 → SMask 被當主圖
+      // 重壓 → 寫成 DeviceRGB DCT JPEG → 違反 PDF spec § 11.6.5.3 → macOS Preview 拒渲染
+      for (const v of [sm, m]) {
+        if (v instanceof PDFLib.PDFRef) {
+          maskTargetRefs.add(refKey(v));
+        }
+      }
+    });
+
+    const items = [];
+    pdfDoc.context.enumerateIndirectObjects().forEach(([ref, obj]) => {
+      if (!(obj instanceof PDFRawStream)) return;
+      const dict = obj.dict;
+      const subtype = dict.get(PDFName.of('Subtype'));
+      const subStr = subtype && (subtype.encodedName || subtype.toString());
+      if (subStr !== '/Image') return;
+      const type = dict.get(PDFName.of('Type'));
+      const typeStr = type && (type.encodedName || type.toString());
+      if (typeStr && typeStr !== '/XObject') return;
+      const filter = dict.get(PDFName.of('Filter'));
+      const filterType = imageFilterType(filter);
+      if (!filterType) return;
+      // skip 被當 alpha 用的(是別人 SMask/Mask 的 target)
+      if (maskTargetRefs.has(refKey(ref))) return;
+      // skip ImageMask stencil mask
+      const imgMask = dict.get(PDFName.of('ImageMask'));
+      if (imgMask && (imgMask.value === true || imgMask.encodedName === '/true')) return;
+      // skip 有 Mask 是 Array(color key)— re-encode RGB 會讓 key 錯位
+      const mask = dict.get(PDFName.of('Mask'));
+      if (mask && mask.array) return;
+      // 有 SMask/Mask 的主圖:標記 hasMask,讓 recompressImage 走 plate 偵測分支
+      const smRef = dict.get(PDFName.of('SMask'));
+      const mkRef = dict.get(PDFName.of('Mask'));
+      const hasMask = (smRef instanceof PDFLib.PDFRef) || (mkRef instanceof PDFLib.PDFRef);
+      // SMask 帶 Matte 仍 skip(pre-multiplied alpha 不能重壓)
+      if (smRef instanceof PDFLib.PDFRef) {
+        try {
+          const smObj = pdfDoc.context.lookup(smRef);
+          if (smObj && smObj.dict && smObj.dict.get(PDFName.of('Matte'))) return;
+        } catch (_) {}
+      }
+      items.push({ ref, obj, dict, filterType, hasMask });
+    });
+    return items;
+  }
+
+  // ===== applyImageReplacement (index.html L2630-2660) =====
+  function applyImageReplacement(pdfDoc, ref, dict, origW, origH, scale, result) {
+    const N = (n) => PDFLib.PDFName.of(n);
+    const actualScale = result.plateScale || scale;
+    // OxiPNG 路徑:用 PNG 解析出來的真實尺寸,FlateDecode + Predictor 15
+    if (result.filter === 'FlateDecode-PNG' && result.pngMeta) {
+      const m = result.pngMeta;
+      dict.set(N('Width'), PDFLib.PDFNumber.of(m.width));
+      dict.set(N('Height'), PDFLib.PDFNumber.of(m.height));
+      dict.set(N('Filter'), N('FlateDecode'));
+      dict.set(N('ColorSpace'), N(m.colorspace));
+      dict.set(N('BitsPerComponent'), PDFLib.PDFNumber.of(m.bitDepth));
+      // DecodeParms 含 Predictor 15(自動選 PNG 五種 predictor)
+      const dp = pdfDoc.context.obj({
+        Predictor: 15,
+        Columns: m.width,
+        Colors: m.colors,
+        BitsPerComponent: m.bitDepth,
+      });
+      dict.set(N('DecodeParms'), dp);
+      pdfDoc.context.assign(ref, PDFLib.PDFRawStream.of(dict, result.bytes));
+      return;
+    }
+    // JPEG / JP2 路徑(原本邏輯)
+    if (origW > 0) dict.set(N('Width'), PDFLib.PDFNumber.of(Math.max(1, Math.floor(origW * actualScale))));
+    if (origH > 0) dict.set(N('Height'), PDFLib.PDFNumber.of(Math.max(1, Math.floor(origH * actualScale))));
+    dict.set(N('Filter'), N(result.filter));
+    try { dict.delete(N('DecodeParms')); } catch (_) {}
+    dict.set(N('ColorSpace'), N('DeviceRGB'));
+    dict.set(N('BitsPerComponent'), PDFLib.PDFNumber.of(8));
+    pdfDoc.context.assign(ref, PDFLib.PDFRawStream.of(dict, result.bytes));
+  }
+
+  // ===== skipReasonOf (index.html L2662-2678) =====
+  function skipReasonOf(dict, filterType, hasMask) {
+    const N = (n) => PDFLib.PDFName.of(n);
+    const cs = dict.get(N('ColorSpace'));
+    const bpc = dict.get(N('BitsPerComponent'))?.asNumber?.() || 8;
+    let csKey = 'Unknown';
+    if (cs) {
+      if (cs.encodedName) csKey = cs.encodedName.replace(/^\//, '');
+      else if (cs.array) csKey = 'Array(' + (cs.get(0)?.encodedName?.replace(/^\//, '') || '?') + ')';
+    }
+    // 有 SMask 且 decode 不是 plate 型 → 保守不壓(避免毀透明)
+    if (hasMask) return '帶 SMask 非 plate 型(保守不壓)';
+    if (bpc !== 8) return `${bpc}-bit`;
+    if (csKey === 'Array(Indexed)') return 'Indexed 調色盤';
+    if (csKey === 'Array(ICCBased)') return 'ICCBased 色彩描述';
+    if (csKey.startsWith('Array')) return csKey;
+    return filterType === 'FlateDecode' ? `Flate+${csKey}` : csKey;
+  }
+
+  // ===== embedJpxImage (index.html L1107-1120) =====
   function embedJpxImage(pdfDoc, jpxBytes, width, height) {
     const ctx = pdfDoc.context;
     const N = (n) => PDFLib.PDFName.of(n);
@@ -1463,7 +1454,7 @@ function _newCanvas() {
     return ctx.register(stream);
   }
 
-  // ===== drawJpxOnPage (index.html line 1775-1783) =====
+  // ===== drawJpxOnPage (index.html L1777-1785) =====
   function drawJpxOnPage(page, imgRef, width, height, keyName) {
     page.node.setXObject(PDFLib.PDFName.of(keyName), imgRef);
     page.pushOperators(
@@ -1474,7 +1465,7 @@ function _newCanvas() {
     );
   }
 
-  // ===== roundToFriendlyMB (index.html line 2113-2119) =====
+  // ===== roundToFriendlyMB (index.html L2115-2121) =====
   function roundToFriendlyMB(mb) {
     if (mb < 4.5) return Math.max(1, Math.round(mb));         // 1, 2, 3, 4
     if (mb < 9.5) return 5;                                    // 5
@@ -1483,7 +1474,7 @@ function _newCanvas() {
     return Math.ceil(mb / 100) * 100;                          // 500, 600, ...
   }
 
-  // ===== estimatePreserveTargetMB (index.html line 2122-2133) =====
+  // ===== estimatePreserveTargetMB (index.html L2124-2135) =====
   function estimatePreserveTargetMB(a) {
     // A(JPEG/Flate 可壓):賽馬 + MozJPEG 高品質 q≈0.82,平均壓到 30-40% 原大小
     // B(無損 Flate 重壓):pako 9,壓到 ~75%
@@ -1497,21 +1488,21 @@ function _newCanvas() {
     return totalBytes / 1024 / 1024;
   }
 
-  // ===== CANDIDATES_RASTER (index.html line 2207-2211) =====
+  // ===== CANDIDATES_RASTER (index.html L2209-2213) =====
   const CANDIDATES_RASTER = [
     [2.0, 0.90], [1.5, 0.85], [1.2, 0.80], [1.0, 0.75],
     [0.85, 0.70], [0.7, 0.60], [0.55, 0.50], [0.4, 0.40],
     [0.3, 0.30], [0.22, 0.25]
   ];
 
-  // ===== CANDIDATES_PRESERVE (index.html line 2213-2217) =====
+  // ===== CANDIDATES_PRESERVE (index.html L2215-2219) =====
   const CANDIDATES_PRESERVE = [
     [1.0, 0.90], [1.0, 0.80], [1.0, 0.70],
     [0.85, 0.75], [0.75, 0.70], [0.6, 0.60],
     [0.5, 0.50], [0.4, 0.45], [0.3, 0.35], [0.22, 0.30]
   ];
 
-  // ===== renderPageEncoded (index.html line 2219-2232) =====
+  // ===== renderPageEncoded (index.html L2221-2234) =====
   async function renderPageEncoded(page, scale, quality, codec) {
     const viewport = page.getViewport({ scale });
     const canvas = _newCanvas();
@@ -1527,7 +1518,7 @@ function _newCanvas() {
     return { ...encoded, width: viewport.width, height: viewport.height, pxW, pxH };
   }
 
-  // ===== buildPdf (index.html line 2234-2269) =====
+  // ===== buildPdf (index.html L2236-2271) =====
   async function buildPdf(pages, scale, quality, onProgress, codec = 'jpeg') {
     const outDoc = await PDFLib.PDFDocument.create();
     // Phase 0-82%: 頁面渲染
@@ -1565,7 +1556,7 @@ function _newCanvas() {
     return out;
   }
 
-  // ===== pickStart (index.html line 2272-2279) =====
+  // ===== pickStart (index.html L2274-2281) =====
   function pickStart(ratio) {
     if (ratio >= 0.75) return [1.0, 0.88];
     if (ratio >= 0.5)  return [0.95, 0.78];
@@ -1575,7 +1566,7 @@ function _newCanvas() {
     return [0.3, 0.32];
   }
 
-  // ===== pickStartRaster (index.html line 2282-2290) =====
+  // ===== pickStartRaster (index.html L2284-2292) =====
   function pickStartRaster(ratio, maxScale) {
     let s, q;
     if (ratio >= 0.5)       { s = maxScale;       q = 0.85; }
@@ -1586,7 +1577,7 @@ function _newCanvas() {
     return [Math.max(0.5, s), q];
   }
 
-  // ===== pickStartPreserve (index.html line 2293-2300) =====
+  // ===== pickStartPreserve (index.html L2295-2302) =====
   function pickStartPreserve(ratio) {
     if (ratio >= 0.85) return [0.95, 0.72];
     if (ratio >= 0.65) return [0.85, 0.62];
@@ -1596,7 +1587,7 @@ function _newCanvas() {
     return [0.25, 0.3];
   }
 
-  // ===== refineParams (index.html line 2303-2313) =====
+  // ===== refineParams (index.html L2305-2315) =====
   function refineParams(scale, quality, actualBytes, targetBytes, maxScale = 1.0, maxQuality = 0.95) {
     let factor = Math.sqrt((targetBytes * 0.93) / actualBytes);
     // 高 quality 域(>=0.75)JPEG 量化非線性,溫和一點避免過縮;
@@ -1609,7 +1600,7 @@ function _newCanvas() {
     ];
   }
 
-  // ===== shrinkRaster (index.html line 2315-2366) =====
+  // ===== shrinkRaster (index.html L2317-2368) =====
   async function shrinkRaster(file, targetBytes, codec) {
     log(`模式:整頁轉圖片`);
     log(`讀取 PDF ...`);
@@ -1663,7 +1654,7 @@ function _newCanvas() {
     return smallestBytes;
   }
 
-  // ===== prepareDocumentBytes (index.html line 2682-2737) =====
+  // ===== prepareDocumentBytes (index.html L2684-2739) =====
   async function prepareDocumentBytes(origBuf, onLog, opts = {}) {
     const log2 = (msg) => { if (onLog) onLog(msg); };
     const origSize = origBuf.byteLength || origBuf.length || 0;
@@ -1721,7 +1712,7 @@ function _newCanvas() {
     return prepBytes;
   }
 
-  // ===== buildPreservePdf (index.html line 2739-2889) =====
+  // ===== buildPreservePdf (index.html L2741-2891) =====
   async function buildPreservePdf(prepBytes, scale, quality, codec, verboseLog = false) {
     const updateLogLine = (prefix) => {
       const had = $log.textContent.endsWith('\n');
@@ -1874,7 +1865,7 @@ function _newCanvas() {
     return out;
   }
 
-  // ===== buildPreservePdfProbe (index.html line 2893-2983) =====
+  // ===== buildPreservePdfProbe (index.html L2895-2985) =====
   async function buildPreservePdfProbe(prepBytes, scale, quality, codec, verboseLog, skipSmaskDownscale = false) {
     const updateLogLine = (prefix) => {
       const had = $log.textContent.endsWith('\n');
@@ -1967,7 +1958,7 @@ function _newCanvas() {
     return { items, candidates, itemDims, rankByIdx, isPageBgLike, smaskScale };
   }
 
-  // ===== buildPreservePdfMultiProbe (index.html line 2988-3133) =====
+  // ===== buildPreservePdfMultiProbe (index.html L2990-3135) =====
   async function buildPreservePdfMultiProbe(prepBytes, setpoints, codec, verboseLog, skipSmaskDownscale = false) {
     const updateLogLine = (prefix) => {
       const had = $log.textContent.endsWith('\n');
@@ -2115,7 +2106,7 @@ function _newCanvas() {
     return { items, candidates, itemDims, rankByIdx, isPageBgLike, smaskScale };
   }
 
-  // ===== knapsackPickChoices (index.html line 3136-3231) =====
+  // ===== knapsackPickChoices (index.html L3138-3233) =====
   function knapsackPickChoices(setpoints, probeResults, items, prepBytesLen, targetBytes, log2) {
     const N = items.length;
     const numV = setpoints.length;
@@ -2213,7 +2204,7 @@ function _newCanvas() {
     return { choices, estimatedTotal: used };
   }
 
-  // ===== assembleFinalPdf (index.html line 3234-3284) =====
+  // ===== assembleFinalPdf (index.html L3236-3286) =====
   async function assembleFinalPdf(prepBytes, setpoints, probeResults, choices, verboseLog, skipSmaskDownscale = false) {
     const pdfDoc = await PDFLib.PDFDocument.load(prepBytes, { updateMetadata: false });
     const items = await collectImageStreams(pdfDoc);
@@ -2266,12 +2257,12 @@ function _newCanvas() {
     return out;
   }
 
-  // ===== compressRatioOf (index.html line 3287-3289) =====
+  // ===== compressRatioOf (index.html L3289-3291) =====
   function compressRatioOf(scale, quality) {
     return scale * scale * Math.pow(quality, 1.5);
   }
 
-  // ===== tryUpQuality (index.html line 3319-3369) =====
+  // ===== tryUpQuality (index.html L3321-3371) =====
   async function tryUpQuality(buildFn, currentBest, targetBytes, historyOver, maxScale = 1.0, maxQuality = 0.95) {
     const MAX_S = maxScale, MAX_Q = maxQuality;
     if (currentBest.scale >= MAX_S - 0.005 && currentBest.quality >= MAX_Q - 0.005) return currentBest;
@@ -2324,7 +2315,7 @@ function _newCanvas() {
     return best;
   }
 
-  // ===== shrinkPreserve (index.html line 3371-3492) =====
+  // ===== shrinkPreserve (index.html L3373-3494) =====
   async function shrinkPreserve(file, targetBytes, codec) {
     log(`模式:保留文字(只壓圖片)`);
     log(`讀取 PDF ...`);
@@ -2448,7 +2439,7 @@ function _newCanvas() {
     return smallestBytes;
   }
 
-  // ===== shrinkViewPreserve (index.html line 3494-3628) =====
+  // ===== shrinkViewPreserve (index.html L3496-3630) =====
   async function shrinkViewPreserve(file, maxPx, label, codec, quality = 0.85, qLabel = '標準') {
     log(`模式:保留文字 · 裝置:${label} · 畫質:${qLabel}`);
     log(`目標像素上限:${maxPx}px(最長邊)· 畫質 ${Math.round(quality * 100)}%`);
@@ -2585,7 +2576,7 @@ function _newCanvas() {
     return bytes;
   }
 
-  // ===== shrinkViewRaster (index.html line 3630-3656) =====
+  // ===== shrinkViewRaster (index.html L3632-3658) =====
   async function shrinkViewRaster(file, maxPx, label, codec, quality = 0.85, qLabel = '標準') {
     log(`模式:整頁轉圖片 · 裝置:${label} · 畫質:${qLabel}`);
     log(`每頁最長邊上限:${maxPx}px,quality=${quality}`);
@@ -2614,7 +2605,7 @@ function _newCanvas() {
     return bytes;
   }
 
-  // ===== shrinkAuto (index.html line 3659-3748) =====
+  // ===== shrinkAuto (index.html L3661-3750) =====
   async function shrinkAuto(file, mode, codec) {
     if (mode === 'raster') {
       log(`模式:整頁轉圖片 · 自動最佳化(壓一次)`);
@@ -2713,8 +2704,6 @@ let _workerCancelled = false;
 function checkCancelled() {
   if (_workerCancelled) throw new Error('使用者取消');
 }
-
-// Progress:跟主 thread 一樣的 phase-relative 模型
 let _progressBase = 0, _progressRange = 100;
 function setProgressPhase(base, range, _ceil) {
   _progressBase = base || 0;
@@ -2724,17 +2713,12 @@ let _lastProgressMsg = -1;
 function setProgress(localPct) {
   const lp = Math.max(0, Math.min(100, localPct));
   const finalPct = _progressBase + lp * _progressRange / 100;
-  // throttle:每整數 % 才 postMessage 一次,避免 spam
   const rounded = Math.round(finalPct);
   if (rounded !== _lastProgressMsg) {
     _lastProgressMsg = rounded;
     self.postMessage({ type: 'progress', pct: finalPct });
   }
 }
-
-// Log:fake $log 用 buffer,setter 觸發時把 buffer 整個 forward 給 main
-// throttle:同一 macrotask 內多次 update 只送最後一個(buildPreservePdf 內部會
-// `$log.textContent = lines.join('\n')` 重組,每次都是完整內容)
 let _logBuffer = '';
 let _logFlushPending = false;
 function _scheduleLogFlush() {
@@ -2757,14 +2741,11 @@ function log(msg) {
   _scheduleLogFlush();
 }
 function updateLogLine(prefix) {
-  // 替換最後一行
   const idx = _logBuffer.lastIndexOf('\n', _logBuffer.length - 2);
   _logBuffer = (idx >= 0 ? _logBuffer.slice(0, idx + 1) : '') + String(prefix) + '\n';
   _scheduleLogFlush();
 }
 function clearLog() { _logBuffer = ''; _scheduleLogFlush(); }
-
-// Mascot / race 是主 thread CSS-driven 的東西,worker 端 no-op
 function startRace() {}
 function stopHeartbeat() {}
 function declareWinner() {}
@@ -2793,7 +2774,6 @@ async function runCompress(file, options = {}) {
   return await shrinkAuto(fileLike, mode, codec);
 }
 
-
   // 收訊息
 self.addEventListener('message', async (e) => {
   const msg = e.data;
@@ -2805,11 +2785,9 @@ self.addEventListener('message', async (e) => {
         break;
       }
       case 'compress': {
-        // Phase 2.3: 跑全流程 → done 帶 bytes(transferable 零拷貝)
         _workerCancelled = false;
         const { file, options } = msg;
         const bytes = await runCompress(file, options || {});
-        // 確保是 Uint8Array 且 buffer 可 transfer
         const out = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
         self.postMessage({ type: 'done', bytes: out }, [out.buffer]);
         break;
