@@ -12,13 +12,21 @@
 'use strict';
 
 // 載 vendor libs(順序:獨立的先載,JsCodecs 最後)
+// ?v= 是 cache-busting,主程式啟動 worker 時可傳 version 進來
+const V = (() => {
+  try {
+    const u = new URL(self.location.href);
+    return u.searchParams.get('v') || '';
+  } catch (_) { return ''; }
+})();
+const qs = V ? '?v=' + V : '';
 try {
   importScripts(
-    'pdf-lib.min.js',           // → self.PDFLib
-    'pdf.min.js',                // → self.pdfjsLib
-    'pako.min.js',               // → self.pako
-    'openjpegwasm.js',           // → self.OpenJPEGWASM
-    'jsquash/codecs-bundle.js'   // → self.JsCodecs(內部會 lazy init MozJPEG / OxiPNG)
+    'pdf-lib.min.js' + qs,           // → self.PDFLib
+    'pdf.min.js' + qs,                // → self.pdfjsLib
+    'pako.min.js' + qs,               // → self.pako
+    'openjpegwasm.js' + qs,           // → self.OpenJPEGWASM
+    'jsquash/codecs-bundle.js' + qs   // → self.JsCodecs(lazy init MozJPEG / OxiPNG)
   );
 } catch (e) {
   self.postMessage({ type: 'error', stage: 'importScripts', msg: e.message, stack: e.stack });

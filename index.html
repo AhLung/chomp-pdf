@@ -595,7 +595,10 @@
     if (_workerReady) return _workerReady;
     _workerReady = new Promise((resolve, reject) => {
       try {
-        const w = new Worker('vendor/compress-worker.js');
+        // 帶 v 參數做 cache-busting:每次發版 query string 都不同,
+        // 強制瀏覽器重新抓 worker + worker 內部 importScripts 也帶同樣 ?v=
+        const wVer = (document.querySelector('h1 .version')?.textContent || 'dev').replace(/\W/g, '');
+        const w = new Worker('vendor/compress-worker.js?v=' + wVer);
         let onReady = null;
         const timeout = setTimeout(() => {
           console.warn('[ChompWorker] init timeout 8s');
