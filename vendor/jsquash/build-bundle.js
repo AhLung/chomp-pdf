@@ -58,6 +58,9 @@ const bundle = `/* ChompPDF codec bundle: MozJPEG (Emscripten) + OxiPNG (wasm-bi
  * Apache-2.0 — Squoosh / jSquash / Mozilla / OxiPNG
  */
 (function() {
+  // Worker shim:Web Worker 沒 window,但 Emscripten 內部會 window.X = Y
+  // 主 thread 此 if 判定 false → no-op,worker → window 變 globalThis 的 alias
+  if (typeof window === 'undefined') globalThis.window = globalThis;
   // === Base64 decode helper ===
   function b64ToUint8(b64) {
     const bin = atob(b64);
