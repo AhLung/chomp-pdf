@@ -508,7 +508,7 @@
 </head>
 <body>
 
-<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.2.0</span></h1>
+<h1><span class="emoji">🦖</span>ChompPDF<span class="emoji" style="margin-left: 6px; margin-right: 0">🦈</span><span class="version">v1.3.0</span></h1>
 <div class="sub">把 PDF 變小 · 檔案不離開你的電腦 · by <a href="https://portaly.cc/AhLung" target="_blank" rel="noopener">AhLung</a></div>
 
 <label id="drop" for="file">
@@ -580,6 +580,12 @@
 <details class="changelog">
   <summary>📋 更新記錄</summary>
   <div class="changelog-body">
+    <div class="cl-ver"><strong>v1.3.0</strong> · 2026-04-30</div>
+    <ul>
+      <li>修正 macOS Preview 圖片消失的真正原因 — pdf-lib minify 後 class 名被縮寫,SMask 偵測失效讓 SMask 被當主圖重壓成 RGB JPEG,違反 PDF 規範</li>
+      <li>重新啟用 JPEG 2000 編碼(上一版錯誤關掉了,事實上跟相容性問題無關)</li>
+      <li>「自動最佳化」改成跑兩次(高畫質 / 低畫質)+ per-image 拼合 — 之前單次壓等於放棄智慧分配</li>
+    </ul>
     <div class="cl-ver"><strong>v1.2.0</strong> · 2026-04-30</div>
     <ul>
       <li>新增「自動最佳化」模式 — 不勾「限制檔案大小」就自動找畫質與大小的平衡點</li>
@@ -766,15 +772,22 @@
     return { idat, width, height, bitDepth, colors, colorspace };
   }
 
-  // 編碼策略:序列跑 MozJPEG +(小圖 OxiPNG),取最小
-  // JPEG 2000(JPX)輸出在 macOS Preview / 部分系統 PDF 引擎相容性差,預設不啟用
-  // 序列避免 WASM 並行搶 CPU
+  // 編碼策略:序列跑 JP2 + MozJPEG +(小圖 OxiPNG),取最小
+  // 之前曾以為 macOS Preview 渲染失敗是 JPX 相容性問題,實際 root cause 是 SMask
+  // ColorSpace bug(constructor.name 在 minify 後 mangle),已修;JPX 重新啟用
   async function encodeCanvas(canvas, quality, codec) {
     const W = canvas.width, H = canvas.height;
     const isSmall = (W * H <= 240 * 240);
     let imgData = null;
     const getImgData = () => imgData || (imgData = canvasToImageData(canvas));
     const results = [];
+
+    // JP2
+    try {
+      const ratio = Math.max(5, Math.min(150, 15 / Math.max(0.1, quality)));
+      const bytes = await encodeCanvasToJpx(canvas, ratio);
+      results.push({ bytes, filter: 'JPXDecode', label: 'jp2' });
+    } catch (_) {}
 
     // MozJPEG(WASM fallback to canvas JPEG)
     if (window.JsCodecs && window.JsCodecs.encodeMozJpeg) {
@@ -917,7 +930,7 @@
         const lookup = csObj.get(3);
         let paletteBytes = null;
         try {
-          if (lookup && lookup.constructor && lookup.constructor.name === 'PDFRef') {
+          if (lookup instanceof PDFLib.PDFRef) {
             const s = ctx.lookup(lookup);
             if (s && s.contents) {
               // stream,可能 Flate 壓縮
@@ -2381,8 +2394,11 @@
       const d = obj.dict;
       const sm = d.get(PDFName.of('SMask'));
       const m = d.get(PDFName.of('Mask'));
+      // 用 instanceof 而非 constructor.name — pdf-lib.min.js 把 class 名稱 mangle 成單字母,
+      // .constructor.name === 'PDFRef' 永遠 false → maskTargetRefs 永遠空 → SMask 被當主圖
+      // 重壓 → 寫成 DeviceRGB DCT JPEG → 違反 PDF spec § 11.6.5.3 → macOS Preview 拒渲染
       for (const v of [sm, m]) {
-        if (v && v.constructor && v.constructor.name === 'PDFRef') {
+        if (v instanceof PDFLib.PDFRef) {
           maskTargetRefs.add(refKey(v));
         }
       }
@@ -3289,23 +3305,58 @@
       log(`\n✓ 輸出 ${fmtMB(bytes.length)}`);
       return bytes;
     }
-    // preserve 模式:預處理 + 單次 high-quality 壓縮
-    log(`模式:保留文字 · 自動最佳化(壓一次)`);
+    // preserve 模式:預處理 + 雙版本探測 + 智慧拼合(per-image 挑最佳)
+    // 單次壓縮等於放棄智慧分配,所以至少跑兩個 setpoint(高 / 低畫質)再合
+    log(`模式:保留文字 · 自動最佳化(雙版本探測 + 智慧拼合)`);
     const origBuf = await file.arrayBuffer();
     log(`讀取 PDF ...`);
-    setProgressPhase(0, 32);
+    setProgressPhase(0, 25);
     const prepBytes = await prepareDocumentBytes(origBuf, log);
-    // 單次:scale=1.0(不縮)、quality=0.82(高品質)
-    setProgressPhase(32, 65);
-    log(`\n[單次壓縮](縮放 100% · 畫質 82%)`);
+
+    const setpoints = [
+      { scale: 1.0, quality: 0.85, label: 'H' },  // 高畫質:1:1 解析度 + 85%
+      { scale: 0.7, quality: 0.62, label: 'L' },  // 低畫質:縮 70% + 62%
+    ];
+
+    setProgressPhase(25, 60);
+    const probeResults = [];
+    for (let s = 0; s < setpoints.length; s++) {
+      const sp = setpoints[s];
+      const spLabel = sp.label === 'H' ? '高' : '低';
+      log(`\n[第 ${s + 1} 次:${spLabel}畫質測試](縮放 ${Math.round(sp.scale * 100)}% · 畫質 ${Math.round(sp.quality * 100)}%)`);
+      startRace();
+      const probe = await buildPreservePdfProbe(prepBytes, sp.scale, sp.quality, codec, true);
+      probeResults.push(probe);
+    }
+
+    // 每張圖 per-image 規則:LOW 體積 ≤ HIGH × 0.6 才換 LOW(明顯省才割捨畫質),
+    // 否則保 HIGH(差不多大就保畫質)
+    const items = probeResults[0].items;
+    const choices = new Array(items.length).fill(0); // 預設 HIGH
+    let usedHigh = 0, usedLow = 0, usedOrig = 0;
+    for (let i = 0; i < items.length; i++) {
+      const high = probeResults[0].candidates[i];
+      const low = probeResults[1].candidates[i];
+      if (!high && !low) { choices[i] = -1; usedOrig++; continue; }
+      if (!high) { choices[i] = 1; usedLow++; continue; }
+      if (!low) { choices[i] = 0; usedHigh++; continue; }
+      if (low.bytes.length <= high.bytes.length * 0.6) {
+        choices[i] = 1; usedLow++;
+      } else {
+        choices[i] = 0; usedHigh++;
+      }
+    }
+    log(`\n[智慧拼合] 保畫質 ${usedHigh} 張、改用低畫質 ${usedLow} 張${usedOrig > 0 ? ` · 維持原圖 ${usedOrig} 張` : ''}`);
+
+    setProgressPhase(85, 15);
     startRace();
-    const bytes = await buildPreservePdf(prepBytes, 1.0, 0.82, codec, true);
-    if (bytes.length >= file.size) {
+    const finalBytes = await assembleFinalPdf(prepBytes, setpoints, probeResults, choices, true);
+    if (finalBytes.length >= file.size) {
       log(`\n⚠ 壓縮後反而較大,自動退回原檔`);
       return new Uint8Array(origBuf);
     }
-    log(`\n✓ 輸出 ${fmtMB(bytes.length)}`);
-    return bytes;
+    log(`\n✓ 輸出 ${fmtMB(finalBytes.length)}`);
+    return finalBytes;
   }
 
   async function shrink(file) {
